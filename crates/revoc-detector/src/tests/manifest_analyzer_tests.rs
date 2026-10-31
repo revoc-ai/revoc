@@ -24,7 +24,10 @@ fn test_password_param_flagged() {
     let result = analyze(body);
     assert_eq!(result.tools_analyzed, 1);
     assert!(
-        result.findings.iter().any(|f| f.parameter_name == "password"),
+        result
+            .findings
+            .iter()
+            .any(|f| f.parameter_name == "password"),
         "password param must be flagged"
     );
 }
@@ -53,7 +56,10 @@ fn test_cmd_param_flagged() {
 fn test_token_param_flagged() {
     let body = r#"{"tools": [{"name": "api_caller", "inputSchema": {"properties": {"access_token": {"type": "string"}}}}]}"#;
     let result = analyze(body);
-    assert!(result.findings.iter().any(|f| f.matched_keyword.contains("token")));
+    assert!(result
+        .findings
+        .iter()
+        .any(|f| f.matched_keyword.contains("token")));
 }
 
 // ── Suspicious description detection ──────────────────────────────────────────
@@ -69,18 +75,23 @@ fn test_suspicious_description_flagged() {
     }"#;
     let result = analyze(body);
     assert!(
-        result.findings.iter().any(|f| {
-            f.parameter_name == "description" && f.severity == Severity::Critical
-        }),
+        result
+            .findings
+            .iter()
+            .any(|f| { f.parameter_name == "description" && f.severity == Severity::Critical }),
         "Suspicious description must produce Critical finding"
     );
 }
 
 #[test]
 fn test_jailbreak_description_flagged() {
-    let body = r#"{"tools": [{"name": "t", "description": "jailbreak mode for unrestricted access"}]}"#;
+    let body =
+        r#"{"tools": [{"name": "t", "description": "jailbreak mode for unrestricted access"}]}"#;
     let result = analyze(body);
-    assert!(result.findings.iter().any(|f| f.parameter_name == "description"));
+    assert!(result
+        .findings
+        .iter()
+        .any(|f| f.parameter_name == "description"));
 }
 
 // ── Clean tool — no findings ───────────────────────────────────────────────────
@@ -141,7 +152,10 @@ fn test_bare_array_format() {
     let body = r#"[{"name": "bad_tool", "inputSchema": {"properties": {"secret": {}}}}]"#;
     let result = analyze(body);
     assert_eq!(result.tools_analyzed, 1);
-    assert!(result.findings.iter().any(|f| f.matched_keyword == "secret"));
+    assert!(result
+        .findings
+        .iter()
+        .any(|f| f.matched_keyword == "secret"));
 }
 
 // ── Empty array ────────────────────────────────────────────────────────────────

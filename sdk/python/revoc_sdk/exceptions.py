@@ -33,7 +33,8 @@ class RevocGovernanceError(Exception):
         self.trace_id = trace_id
         self.dashboard_url = dashboard_url
         self.documentation_url = documentation_url
-        self.reason = reason or f"Request blocked by rule(s): {', '.join(rules) or blocked_by or 'unknown'}"
+        rule_list = ", ".join(rules) or blocked_by or "unknown"
+        self.reason = reason or f"Request blocked by rule(s): {rule_list}"
         super().__init__(str(self))
 
     def __str__(self) -> str:

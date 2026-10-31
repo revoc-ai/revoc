@@ -113,14 +113,24 @@ impl KillSwitchState {
     pub fn status_snapshot(&self) -> KillSwitchSnapshot {
         KillSwitchSnapshot {
             global: self.global.load(Ordering::Relaxed),
-            by_org: self.by_org.iter().map(|e| (e.key().clone(), e.value().clone())).collect(),
-            by_caller: self.by_caller.iter().map(|e| (e.key().clone(), e.value().clone())).collect(),
+            by_org: self
+                .by_org
+                .iter()
+                .map(|e| (e.key().clone(), e.value().clone()))
+                .collect(),
+            by_caller: self
+                .by_caller
+                .iter()
+                .map(|e| (e.key().clone(), e.value().clone()))
+                .collect(),
         }
     }
 }
 
 impl Default for KillSwitchState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Serializable snapshot of kill-switch state.
@@ -165,11 +175,17 @@ pub fn publish_kill_switch_message(
     if !config.kill_switch.enabled {
         return;
     }
-    let msg = KillSwitchMessage { action: action.to_owned(), entry, scope };
-    let Ok(payload) = serde_json::to_string(&msg) else { return };
+    let msg = KillSwitchMessage {
+        action: action.to_owned(),
+        entry,
+        scope,
+    };
+    let Ok(payload) = serde_json::to_string(&msg) else {
+        return;
+    };
 
-    let Ok(redis_url) = std::env::var("REDIS_URL")
-        .or_else(|_| std::env::var(&config.cache.redis_url_env))
+    let Ok(redis_url) =
+        std::env::var("REDIS_URL").or_else(|_| std::env::var(&config.cache.redis_url_env))
     else {
         return;
     };
@@ -190,7 +206,6 @@ pub fn publish_kill_switch_message(
 /// Runs forever as a background task. On Redis failure the task logs a warning
 /// and continues (local state remains valid).
 pub async fn subscribe_kill_switch(state: Arc<KillSwitchState>, redis_url: &str) {
-
     loop {
         match try_subscribe(state.clone(), redis_url).await {
             Ok(()) => {}
@@ -206,9 +221,7 @@ async fn try_subscribe(
     state: Arc<KillSwitchState>,
     redis_url: &str,
 ) -> Result<(), redis::RedisError> {
-    let mut pubsub = redis::Client::open(redis_url)?
-        .get_async_pubsub()
-        .await?;
+    let mut pubsub = redis::Client::open(redis_url)?.get_async_pubsub().await?;
     pubsub.subscribe("revoc:kill_switch").await?;
 
     info!("Kill-switch Redis subscription active on revoc:kill_switch");
@@ -220,7 +233,10 @@ async fn try_subscribe(
             Some(msg) => {
                 let payload: String = match msg.get_payload() {
                     Ok(p) => p,
-                    Err(e) => { warn!(error = %e, "Kill-switch: bad payload"); continue; }
+                    Err(e) => {
+                        warn!(error = %e, "Kill-switch: bad payload");
+                        continue;
+                    }
                 };
                 match serde_json::from_str::<KillSwitchMessage>(&payload) {
                     Ok(ks_msg) => apply_message(&state, ks_msg),
@@ -276,8 +292,16 @@ impl revoc_dashboard::KillSwitchControl for DashboardKillSwitchAdapter {
         let snap = self.state.status_snapshot();
         revoc_dashboard::KillSwitchStatusView {
             global: snap.global,
-            by_org: snap.by_org.into_iter().map(|(k, e)| (k, e.reason)).collect(),
-            by_caller: snap.by_caller.into_iter().map(|(k, e)| (k, e.reason)).collect(),
+            by_org: snap
+                .by_org
+                .into_iter()
+                .map(|(k, e)| (k, e.reason))
+                .collect(),
+            by_caller: snap
+                .by_caller
+                .into_iter()
+                .map(|(k, e)| (k, e.reason))
+                .collect(),
         }
     }
 
@@ -298,7 +322,17 @@ impl revoc_dashboard::KillSwitchControl for DashboardKillSwitchAdapter {
         self.state.activate(entry.clone());
         publish_kill_switch_message(&self.config, "activate", Some(entry.clone()), None);
         let (scope_str, scope_value) = scope_log_parts(&entry.scope);
-        if let Err(e) = self.log.log(scope_str, scope_value, "activate", activated_by, Some(reason)).await {
+        if let Err(e) = self
+            .log
+            .log(
+                scope_str,
+                scope_value,
+                "activate",
+                activated_by,
+                Some(reason),
+            )
+            .await
+        {
             warn!(error = %e, "Failed to write kill_switch_log entry");
         }
         Ok(())
@@ -313,7 +347,11 @@ impl revoc_dashboard::KillSwitchControl for DashboardKillSwitchAdapter {
         self.state.deactivate(&scope);
         publish_kill_switch_message(&self.config, "deactivate", None, Some(scope.clone()));
         let (scope_str, scope_value) = scope_log_parts(&scope);
-        if let Err(e) = self.log.log(scope_str, scope_value, "deactivate", "dashboard", None).await {
+        if let Err(e) = self
+            .log
+            .log(scope_str, scope_value, "deactivate", "dashboard", None)
+            .await
+        {
             warn!(error = %e, "Failed to write kill_switch_log entry");
         }
         Ok(())
@@ -326,16 +364,25 @@ impl revoc_dashboard::KillSwitchControl for DashboardKillSwitchAdapter {
 /// # Errors
 /// Returns [`revoc_core::RevocError::RequestParse`] for an unknown scope name
 /// or a missing `target` for `"org"`/`"caller"` scopes.
-fn parse_scope(scope: &str, target: Option<&str>) -> Result<KillSwitchScope, revoc_core::RevocError> {
+fn parse_scope(
+    scope: &str,
+    target: Option<&str>,
+) -> Result<KillSwitchScope, revoc_core::RevocError> {
     match scope {
         "global" => Ok(KillSwitchScope::Global),
         "org" => target
             .map(|t| KillSwitchScope::Org(t.to_owned()))
-            .ok_or_else(|| revoc_core::RevocError::RequestParse("org scope requires a target".into())),
+            .ok_or_else(|| {
+                revoc_core::RevocError::RequestParse("org scope requires a target".into())
+            }),
         "caller" => target
             .map(|t| KillSwitchScope::Caller(t.to_owned()))
-            .ok_or_else(|| revoc_core::RevocError::RequestParse("caller scope requires a target".into())),
-        other => Err(revoc_core::RevocError::RequestParse(format!("unknown kill-switch scope '{other}'"))),
+            .ok_or_else(|| {
+                revoc_core::RevocError::RequestParse("caller scope requires a target".into())
+            }),
+        other => Err(revoc_core::RevocError::RequestParse(format!(
+            "unknown kill-switch scope '{other}'"
+        ))),
     }
 }
 

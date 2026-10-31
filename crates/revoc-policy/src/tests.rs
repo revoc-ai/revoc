@@ -2,9 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use revoc_core::{
-    Action, CallerContext, DetectionTier, EnforcementMode, Finding, FindingType,
-    PiiEntityType, PolicyDecision, PolicyEngine, PolicyInput, PolicyRuleTier,
-    RequestType, Severity, TextSpan,
+    Action, CallerContext, DetectionTier, EnforcementMode, Finding, FindingType, PiiEntityType,
+    PolicyDecision, PolicyEngine, PolicyInput, PolicyRuleTier, RequestType, Severity, TextSpan,
 };
 
 use crate::{
@@ -50,7 +49,12 @@ fn make_finding_with_span(
     if let Some(e) = entity {
         f = f.with_pii(e);
     }
-    f.span = Some(TextSpan { start, end, field: field.into(), value: None });
+    f.span = Some(TextSpan {
+        start,
+        end,
+        field: field.into(),
+        value: None,
+    });
     f
 }
 
@@ -78,7 +82,11 @@ fn make_input(findings: Vec<Finding>) -> PolicyInput {
 fn test_native_allow_on_empty_findings() {
     let engine = native(EnforcementMode::Enforce);
     let decision = engine.evaluate_sync(&make_input(vec![]));
-    assert_eq!(decision.effective_action, Action::Allow, "Empty findings must allow");
+    assert_eq!(
+        decision.effective_action,
+        Action::Allow,
+        "Empty findings must allow"
+    );
 }
 
 #[test]
@@ -87,7 +95,10 @@ fn test_native_block_on_ddl_mutation() {
     let finding = make_finding(FindingType::DdlMutation, Severity::Critical, None);
     let decision = engine.evaluate_sync(&make_input(vec![finding]));
     assert_eq!(decision.effective_action, Action::Block);
-    assert!(decision.applicable_rules.iter().any(|r| r == "sec_ddl_mutation_v1"));
+    assert!(decision
+        .applicable_rules
+        .iter()
+        .any(|r| r == "sec_ddl_mutation_v1"));
 }
 
 #[test]
@@ -100,7 +111,10 @@ fn test_native_block_on_secret_exposure() {
     );
     let decision = engine.evaluate_sync(&make_input(vec![finding]));
     assert_eq!(decision.effective_action, Action::Block);
-    assert!(decision.applicable_rules.iter().any(|r| r == "secret_block_v1"));
+    assert!(decision
+        .applicable_rules
+        .iter()
+        .any(|r| r == "secret_block_v1"));
 }
 
 #[test]
@@ -109,7 +123,10 @@ fn test_native_block_on_prompt_injection() {
     let finding = make_finding(FindingType::PromptInjection, Severity::Critical, None);
     let decision = engine.evaluate_sync(&make_input(vec![finding]));
     assert_eq!(decision.effective_action, Action::Block);
-    assert!(decision.applicable_rules.iter().any(|r| r == "sec_prompt_injection_v1"));
+    assert!(decision
+        .applicable_rules
+        .iter()
+        .any(|r| r == "sec_prompt_injection_v1"));
 }
 
 #[test]
@@ -122,7 +139,10 @@ fn test_native_redact_on_pii_only() {
     );
     let decision = engine.evaluate_sync(&make_input(vec![finding]));
     assert_eq!(decision.effective_action, Action::Redact);
-    assert!(decision.applicable_rules.iter().any(|r| r == "pii_email_v1"));
+    assert!(decision
+        .applicable_rules
+        .iter()
+        .any(|r| r == "pii_email_v1"));
 }
 
 #[test]
@@ -134,7 +154,11 @@ fn test_native_shadow_mode_effective_action_is_audit() {
     // action is preserved for recording
     assert_eq!(decision.action, Action::Block);
     // effective_action must be Audit in shadow mode
-    assert_eq!(decision.effective_action, Action::Audit, "Shadow mode must set effective_action=Audit");
+    assert_eq!(
+        decision.effective_action,
+        Action::Audit,
+        "Shadow mode must set effective_action=Audit"
+    );
 }
 
 // ── conflict::resolve tests ───────────────────────────────────────────────────
@@ -155,8 +179,14 @@ fn test_conflict_security_wins_over_custom() {
     custom_allow.tier = PolicyRuleTier::Custom;
 
     let result = resolve(&[custom_allow, ddl_block]);
-    assert_eq!(result.action, Action::Block, "Security block must win over Custom allow");
-    assert!(result.applicable_rules.contains(&"sec_ddl_mutation_v1".into()));
+    assert_eq!(
+        result.action,
+        Action::Block,
+        "Security block must win over Custom allow"
+    );
+    assert!(result
+        .applicable_rules
+        .contains(&"sec_ddl_mutation_v1".into()));
 }
 
 #[test]
@@ -169,7 +199,11 @@ fn test_conflict_block_beats_redact_same_tier() {
     // redact is already Profile tier
 
     let result = resolve(&[redact, block.clone()]);
-    assert_eq!(result.action, Action::Block, "Block must beat Redact at same tier");
+    assert_eq!(
+        result.action,
+        Action::Block,
+        "Block must beat Redact at same tier"
+    );
 }
 
 #[test]
@@ -182,8 +216,14 @@ fn test_conflict_profile_loses_to_security() {
     // ddl_block is Security tier (from ::block constructor)
 
     let result = resolve(&[hipaa_block, ddl_block]);
-    assert_eq!(result.tier, PolicyRuleTier::Security, "Security must beat Profile");
-    assert!(result.applicable_rules.contains(&"sec_ddl_mutation_v1".into()));
+    assert_eq!(
+        result.tier,
+        PolicyRuleTier::Security,
+        "Security must beat Profile"
+    );
+    assert!(result
+        .applicable_rules
+        .contains(&"sec_ddl_mutation_v1".into()));
 }
 
 // ── is_security_rule tests ────────────────────────────────────────────────────
@@ -219,7 +259,10 @@ fn test_cache_hit_on_second_call() {
     assert!(!first.cache_hit, "First call must not be a cache hit");
 
     let second = engine.evaluate_sync(&input);
-    assert!(second.cache_hit, "Second call with same input must be a cache hit");
+    assert!(
+        second.cache_hit,
+        "Second call with same input must be a cache hit"
+    );
 }
 
 #[test]

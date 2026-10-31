@@ -82,7 +82,10 @@ impl SlidingWindowScanner {
         };
 
         let findings = self.detector.detect_default_timeout(&input).await;
-        let blocking: Vec<Finding> = findings.into_iter().filter(Finding::is_high_severity).collect();
+        let blocking: Vec<Finding> = findings
+            .into_iter()
+            .filter(Finding::is_high_severity)
+            .collect();
 
         if let Some(first) = blocking.first() {
             return ChunkResult {

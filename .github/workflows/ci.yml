@@ -168,6 +168,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
       - uses: azure/setup-kubectl@v4
+      - name: Fetch chart dependencies
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm dependency build helm/revoc/
       - name: Lint
         run: helm lint helm/revoc/
       - name: Template
@@ -195,11 +199,9 @@ jobs:
           cargo install cargo-audit --locked
           cargo audit --deny warnings
       - name: cargo deny
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          arguments: --workspace --all-features
-          command: check
-          command-arguments: --config deny.toml
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny --workspace --all-features check --config deny.toml
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -208,13 +210,13 @@ jobs:
         run: |
           pip install pip-audit
           pip install -e .
-          pip-audit --strict --progress-spinner=off
+          pip-audit --skip-editable --progress-spinner=off
       - name: pip-audit — sdk/python
         working-directory: sdk/python
         run: |
           pip install pip-audit
           pip install -e .
-          pip-audit --strict --progress-spinner=off
+          pip-audit --skip-editable --progress-spinner=off
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
         with:

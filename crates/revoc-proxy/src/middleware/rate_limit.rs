@@ -55,11 +55,8 @@ pub async fn rate_limit_middleware(
 
     let Some(_permit) = state.rate_limiter.try_acquire(&caller_id) else {
         let trace_id = uuid::Uuid::now_v7().to_string();
-        let body = RevocErrorResponse::rate_limit(
-            &trace_id,
-            30,
-            &state.config.server.dashboard_base_url,
-        );
+        let body =
+            RevocErrorResponse::rate_limit(&trace_id, 30, &state.config.server.dashboard_base_url);
         return (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
     };
 

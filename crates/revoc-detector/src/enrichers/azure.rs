@@ -41,7 +41,10 @@ impl AzureContentSafetyEnricher {
 
         let resp = match self
             .client
-            .post(format!("{}/contentsafety/text:analyze?api-version=2023-10-01", self.endpoint))
+            .post(format!(
+                "{}/contentsafety/text:analyze?api-version=2023-10-01",
+                self.endpoint
+            ))
             .header("Ocp-Apim-Subscription-Key", &self.api_key)
             .json(&payload)
             .send()

@@ -15,9 +15,7 @@ use revoc_core::{
 use revoc_telemetry::RevocMetrics;
 
 use crate::{
-    cache::DecisionCache,
-    native::NativePolicyEngine,
-    sidecar::SidecarPolicyEngine,
+    cache::DecisionCache, native::NativePolicyEngine, sidecar::SidecarPolicyEngine,
     wasm::WasmPolicyEngine,
 };
 

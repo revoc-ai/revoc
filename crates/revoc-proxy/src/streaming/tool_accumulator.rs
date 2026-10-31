@@ -42,7 +42,12 @@ impl ToolCallAccumulator {
         };
 
         for tc in tool_calls {
-            let index = u32::try_from(tc.get("index").and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(0);
+            let index = u32::try_from(
+                tc.get("index")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0),
+            )
+            .unwrap_or(0);
             let entry = self.calls.entry(index).or_default();
 
             if let Some(func) = tc.get("function") {
@@ -68,7 +73,8 @@ impl ToolCallAccumulator {
 
     /// Parse all accumulated partial calls into [`McpToolCall`] objects.
     pub fn get_completed_calls(&self) -> Vec<McpToolCall> {
-        let mut entries: Vec<(u32, &PartialToolCall)> = self.calls.iter().map(|(k, v)| (*k, v)).collect();
+        let mut entries: Vec<(u32, &PartialToolCall)> =
+            self.calls.iter().map(|(k, v)| (*k, v)).collect();
         entries.sort_by_key(|(idx, _)| *idx);
 
         entries

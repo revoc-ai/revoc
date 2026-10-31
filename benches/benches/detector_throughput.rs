@@ -54,12 +54,10 @@ fn llm_input(body: Bytes) -> InspectionInput {
 }
 
 fn to_bytes(v: &serde_json::Value) -> Bytes {
-    Bytes::from(
-        serde_json::to_vec(v).unwrap_or_else(|e| {
-            eprintln!("benchmark: failed to serialize fixture: {e}");
-            std::process::exit(1)
-        }),
-    )
+    Bytes::from(serde_json::to_vec(v).unwrap_or_else(|e| {
+        eprintln!("benchmark: failed to serialize fixture: {e}");
+        std::process::exit(1)
+    }))
 }
 
 /// 4 KB of clean prose — no PII.
@@ -105,12 +103,28 @@ fn base64_encode(data: &[u8]) -> String {
     let mut out = String::new();
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let b1 = if chunk.len() > 1 {
+            chunk[1] as usize
+        } else {
+            0
+        };
+        let b2 = if chunk.len() > 2 {
+            chunk[2] as usize
+        } else {
+            0
+        };
         out.push(CHARS[b0 >> 2] as char);
         out.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)] as char);
-        if chunk.len() > 1 { out.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char); } else { out.push('='); }
-        if chunk.len() > 2 { out.push(CHARS[b2 & 0x3f] as char); } else { out.push('='); }
+        if chunk.len() > 1 {
+            out.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARS[b2 & 0x3f] as char);
+        } else {
+            out.push('=');
+        }
     }
     out
 }
@@ -200,7 +214,9 @@ fn bench_proxy_overhead(c: &mut Criterion) {
 fn bench_normalization_overhead(c: &mut Criterion) {
     let body = fullwidth_4kb();
     let len = body.len() as u64;
-    let text = std::str::from_utf8(&body).unwrap_or_else(|_| "").to_string();
+    let text = std::str::from_utf8(&body)
+        .unwrap_or_else(|_| "")
+        .to_string();
 
     let mut g = c.benchmark_group("normalization_overhead");
     g.throughput(Throughput::Bytes(len));

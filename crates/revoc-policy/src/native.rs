@@ -9,9 +9,8 @@ use async_trait::async_trait;
 use tracing::debug;
 
 use revoc_core::{
-    EnforcementMode, Finding, FindingType, PiiEntityType, PolicyDecision,
-    PolicyEngine, PolicyEngineMode, PolicyInput, PolicyRuleTier, RequestType, RevocError,
-    Severity,
+    EnforcementMode, Finding, FindingType, PiiEntityType, PolicyDecision, PolicyEngine,
+    PolicyEngineMode, PolicyInput, PolicyRuleTier, RequestType, RevocError, Severity,
 };
 
 use crate::cache::DecisionCache;
@@ -28,7 +27,10 @@ pub struct NativePolicyEngine {
 impl NativePolicyEngine {
     /// Create a new engine with the given cache and enforcement mode.
     pub fn new(cache: Arc<DecisionCache>, enforcement_mode: EnforcementMode) -> Self {
-        Self { cache, enforcement_mode }
+        Self {
+            cache,
+            enforcement_mode,
+        }
     }
 
     /// Evaluate all 30 default rules synchronously and return the resolved decision.
@@ -119,10 +121,7 @@ impl NativePolicyEngine {
                         "DELETE statement without a WHERE clause detected",
                         "sec_delete_no_where_v1",
                     ),
-                    Some("MASS_DELETE") => (
-                        "Mass delete operation detected",
-                        "sec_mass_delete_v1",
-                    ),
+                    Some("MASS_DELETE") => ("Mass delete operation detected", "sec_mass_delete_v1"),
                     _ => (
                         "DDL mutation (DROP/TRUNCATE/ALTER) detected",
                         "sec_ddl_mutation_v1",
@@ -188,16 +187,11 @@ impl NativePolicyEngine {
                 ));
             }
             FindingType::QuotaExceeded => {
-                violations.push(profile_block(
-                    "Token quota exceeded",
-                    "token_quota_v1",
-                ));
+                violations.push(profile_block("Token quota exceeded", "token_quota_v1"));
             }
 
             // Informational — no automatic governance action
-            FindingType::KeywordMatch
-            | FindingType::ToolManifestRisk
-            | FindingType::Custom(_) => {}
+            FindingType::KeywordMatch | FindingType::ToolManifestRisk | FindingType::Custom(_) => {}
         }
     }
 }
@@ -240,13 +234,19 @@ fn pii_rule_id(entity: Option<&PiiEntityType>) -> String {
         Some(PiiEntityType::UsSsn) => "pii_ssn_v1",
         Some(PiiEntityType::CreditCard) => "pii_credit_card_v1",
         Some(PiiEntityType::IbanCode) => "pii_iban_v1",
-        Some(PiiEntityType::BankAccount | PiiEntityType::RoutingNumber | PiiEntityType::SwiftBic) => "pii_bank_account_v1",
+        Some(
+            PiiEntityType::BankAccount | PiiEntityType::RoutingNumber | PiiEntityType::SwiftBic,
+        ) => "pii_bank_account_v1",
         Some(PiiEntityType::UsPassport) => "pii_passport_v1",
         Some(PiiEntityType::UsDriverLicense) => "pii_driver_license_v1",
         Some(PiiEntityType::EmailAddress) => "pii_email_v1",
         Some(PiiEntityType::PhoneNumber) => "pii_phone_v1",
         Some(PiiEntityType::IpAddressV4 | PiiEntityType::IpAddressV6) => "pii_ip_address_v1",
-        Some(PiiEntityType::MedicalRecordNumber | PiiEntityType::NpiNumber | PiiEntityType::DeaNumber) => "pii_mrn_v1",
+        Some(
+            PiiEntityType::MedicalRecordNumber
+            | PiiEntityType::NpiNumber
+            | PiiEntityType::DeaNumber,
+        ) => "pii_mrn_v1",
         Some(PiiEntityType::DateOfBirth) => "pii_dob_v1",
         _ => "pii_generic_v1",
     };

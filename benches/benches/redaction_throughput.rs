@@ -2,7 +2,7 @@
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use revoc_core::{
-    DetectionTier, Finding, FindingType, PolicyDecision, PiiEntityType, Redactor, Severity,
+    DetectionTier, Finding, FindingType, PiiEntityType, PolicyDecision, Redactor, Severity,
     TextSpan,
 };
 use revoc_redaction::RevocRedactor;
@@ -22,7 +22,12 @@ fn redact_decision() -> PolicyDecision {
 fn pii_finding_at(entity: PiiEntityType, field: &str, start: usize, end: usize) -> Finding {
     Finding::new(FindingType::Pii, Severity::High, DetectionTier::Regex)
         .with_pii(entity)
-        .with_span(TextSpan { start, end, field: field.into(), value: None })
+        .with_span(TextSpan {
+            start,
+            end,
+            field: field.into(),
+            value: None,
+        })
         .with_confidence(0.99)
 }
 
@@ -46,9 +51,24 @@ fn body_3_findings_4kb() -> (Vec<u8>, Vec<Finding>) {
     let cc_start = email_start + email.len() + middle2.len();
 
     let findings = vec![
-        pii_finding_at(PiiEntityType::UsSsn, "messages[0].content", ssn_start, ssn_start + ssn.len()),
-        pii_finding_at(PiiEntityType::EmailAddress, "messages[0].content", email_start, email_start + email.len()),
-        pii_finding_at(PiiEntityType::CreditCard, "messages[0].content", cc_start, cc_start + cc.len()),
+        pii_finding_at(
+            PiiEntityType::UsSsn,
+            "messages[0].content",
+            ssn_start,
+            ssn_start + ssn.len(),
+        ),
+        pii_finding_at(
+            PiiEntityType::EmailAddress,
+            "messages[0].content",
+            email_start,
+            email_start + email.len(),
+        ),
+        pii_finding_at(
+            PiiEntityType::CreditCard,
+            "messages[0].content",
+            cc_start,
+            cc_start + cc.len(),
+        ),
     ];
     (body_bytes, findings)
 }
@@ -56,16 +76,36 @@ fn body_3_findings_4kb() -> (Vec<u8>, Vec<Finding>) {
 /// 8 KB LLM body with 10 PII findings spread across the content.
 fn body_10_findings_8kb() -> (Vec<u8>, Vec<Finding>) {
     let ssns: Vec<(&str, &str)> = vec![
-        ("123-45-6789", "SSN_A"), ("234-56-7890", "SSN_B"), ("345-67-8901", "SSN_C"),
+        ("123-45-6789", "SSN_A"),
+        ("234-56-7890", "SSN_B"),
+        ("345-67-8901", "SSN_C"),
     ];
-    let emails: Vec<&str> = vec!["alice@example.com", "bob@test.org", "carol@corp.net", "dave@mail.com"];
-    let ccs: Vec<&str> = vec!["4532015112830366", "5425233430109903", "374251018720955", "6011111111111117"];
+    let emails: Vec<&str> = vec![
+        "alice@example.com",
+        "bob@test.org",
+        "carol@corp.net",
+        "dave@mail.com",
+    ];
+    let ccs: Vec<&str> = vec![
+        "4532015112830366",
+        "5425233430109903",
+        "374251018720955",
+        "6011111111111117",
+    ];
 
     let content = format!(
         "Users: {} {} {}. Contacts: {} {} {} {}. Cards: {} {} {} {}. {}",
-        ssns[0].0, ssns[1].0, ssns[2].0,
-        emails[0], emails[1], emails[2], emails[3],
-        ccs[0], ccs[1], ccs[2], ccs[3],
+        ssns[0].0,
+        ssns[1].0,
+        ssns[2].0,
+        emails[0],
+        emails[1],
+        emails[2],
+        emails[3],
+        ccs[0],
+        ccs[1],
+        ccs[2],
+        ccs[3],
         "More content here. ".repeat(200),
     );
     let body_json = json!({
@@ -83,15 +123,30 @@ fn body_10_findings_8kb() -> (Vec<u8>, Vec<Finding>) {
     let mut findings = Vec::new();
 
     for (ssn, _) in &ssns {
-        findings.push(pii_finding_at(PiiEntityType::UsSsn, "messages[0].content", cursor, cursor + ssn.len()));
+        findings.push(pii_finding_at(
+            PiiEntityType::UsSsn,
+            "messages[0].content",
+            cursor,
+            cursor + ssn.len(),
+        ));
         cursor += ssn.len() + 1;
     }
     for email in &emails {
-        findings.push(pii_finding_at(PiiEntityType::EmailAddress, "messages[0].content", cursor, cursor + email.len()));
+        findings.push(pii_finding_at(
+            PiiEntityType::EmailAddress,
+            "messages[0].content",
+            cursor,
+            cursor + email.len(),
+        ));
         cursor += email.len() + 1;
     }
     for cc in &ccs {
-        findings.push(pii_finding_at(PiiEntityType::CreditCard, "messages[0].content", cursor, cursor + cc.len()));
+        findings.push(pii_finding_at(
+            PiiEntityType::CreditCard,
+            "messages[0].content",
+            cursor,
+            cursor + cc.len(),
+        ));
         cursor += cc.len() + 1;
     }
 

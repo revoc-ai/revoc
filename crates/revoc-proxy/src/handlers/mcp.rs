@@ -89,7 +89,10 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
     );
 
     // ── Step 3: initialize/ping/notifications → forward to upstream MCP server ─
-    if matches!(method.as_str(), "initialize" | "ping" | "notifications/initialized") {
+    if matches!(
+        method.as_str(),
+        "initialize" | "ping" | "notifications/initialized"
+    ) {
         let Some(server) = select_mcp_server(&state, &parts.headers, &mcp_req) else {
             let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
             return mcp_error_resp(503, body, &trace_id, &dash_base);
@@ -160,7 +163,10 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
         let manifest_result = if state.config.mcp.analyze_tool_manifests {
             manifest_analyzer::analyze_tools_list(&resp_bytes)
         } else {
-            ManifestAnalysisResult { findings: vec![], tools_analyzed: 0 }
+            ManifestAnalysisResult {
+                findings: vec![],
+                tools_analyzed: 0,
+            }
         };
 
         let final_body = if state.config.mcp.auto_disable_dangerous_tools
@@ -256,7 +262,11 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             caller: caller.clone(),
             governance_depth: depth,
         };
-        let pipeline_result = state.pipeline.run(inspection_input).instrument(span.clone()).await;
+        let pipeline_result = state
+            .pipeline
+            .run(inspection_input)
+            .instrument(span.clone())
+            .await;
         let findings = pipeline_result.findings;
         let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
         let was_normalized = findings.iter().any(|f| f.was_normalized);
@@ -278,7 +288,12 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
         let policy_start = Instant::now();
-        let decision = match state.policy_engine.evaluate(&policy_input).instrument(span.clone()).await {
+        let decision = match state
+            .policy_engine
+            .evaluate(&policy_input)
+            .instrument(span.clone())
+            .await
+        {
             Ok(d) => d,
             Err(e) => {
                 warn!(error = %e, "Policy eval failed");
@@ -291,14 +306,32 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
         if decision.effective_action.is_blocking() {
             let resp = mcp_block_response(&mcp_req, &decision, &trace_id, &dash_base);
             publish_mcp_event(
-                &state, &trace_id, "block", &caller, None, &tool_name, depth,
-                overall_start.elapsed().as_secs_f64() * 1000.0, &findings, was_normalized,
+                &state,
+                &trace_id,
+                "block",
+                &caller,
+                None,
+                &tool_name,
+                depth,
+                overall_start.elapsed().as_secs_f64() * 1000.0,
+                &findings,
+                was_normalized,
                 &decision,
             );
             spawn_mcp_audit(
-                &state, &trace_id, &request_id, &caller, &decision, &decision,
-                "enforce", &tool_name, depth, detection_ms, policy_ms,
-                overall_start.elapsed().as_secs_f64() * 1000.0, was_normalized,
+                &state,
+                &trace_id,
+                &request_id,
+                &caller,
+                &decision,
+                &decision,
+                "enforce",
+                &tool_name,
+                depth,
+                detection_ms,
+                policy_ms,
+                overall_start.elapsed().as_secs_f64() * 1000.0,
+                was_normalized,
             );
             return resp;
         }
@@ -333,7 +366,11 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             caller: caller.clone(),
             governance_depth: depth,
         };
-        let result_pipeline = state.pipeline.run(result_inspection).instrument(span.clone()).await;
+        let result_pipeline = state
+            .pipeline
+            .run(result_inspection)
+            .instrument(span.clone())
+            .await;
         let result_findings = result_pipeline.findings;
         let result_was_normalized = result_findings.iter().any(|f| f.was_normalized);
 
@@ -367,17 +404,22 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             }
         };
 
-        let final_bytes = if result_decision.action.requires_redaction() || !result_findings.is_empty() {
-            match state.redactor.redact_mcp_result(&result_bytes, &result_findings, &result_decision) {
-                Ok((redacted, _)) => redacted,
-                Err(e) => {
-                    warn!(error = %e, "MCP result redaction failed");
-                    result_bytes.to_vec()
+        let final_bytes =
+            if result_decision.action.requires_redaction() || !result_findings.is_empty() {
+                match state.redactor.redact_mcp_result(
+                    &result_bytes,
+                    &result_findings,
+                    &result_decision,
+                ) {
+                    Ok((redacted, _)) => redacted,
+                    Err(e) => {
+                        warn!(error = %e, "MCP result redaction failed");
+                        result_bytes.to_vec()
+                    }
                 }
-            }
-        } else {
-            result_bytes.to_vec()
-        };
+            } else {
+                result_bytes.to_vec()
+            };
 
         let total_ms = overall_start.elapsed().as_secs_f64() * 1000.0;
         let timing = format!(
@@ -396,22 +438,57 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             decision_str,
             &format!("{dash_base}/traces/{trace_id}"),
             &timing,
-            if result_decision.applicable_rules.is_empty() { None } else { Some(&result_rules_str) },
+            if result_decision.applicable_rules.is_empty() {
+                None
+            } else {
+                Some(&result_rules_str)
+            },
         );
 
         // ── Step 12: audit, SSE, metrics ───────────────────────────────────────
         info!(parent: &span, trace_id, tool_name, decision = decision_str, duration_ms = total_ms, "MCP tool call processed");
-        state.metrics.revoc_requests_total
-            .with_label_values(&[&state.config.server.environment, "mcp", decision_str, "", ""])
+        state
+            .metrics
+            .revoc_requests_total
+            .with_label_values(&[
+                &state.config.server.environment,
+                "mcp",
+                decision_str,
+                "",
+                "",
+            ])
             .inc();
-        let all_findings: Vec<revoc_core::Finding> = findings.iter().cloned().chain(result_findings.iter().cloned()).collect();
+        let all_findings: Vec<revoc_core::Finding> = findings
+            .iter()
+            .cloned()
+            .chain(result_findings.iter().cloned())
+            .collect();
         publish_mcp_event(
-            &state, &trace_id, decision_str, &caller, Some(server.id.clone()), &tool_name, depth,
-            total_ms, &all_findings, was_normalized || result_was_normalized, &result_decision,
+            &state,
+            &trace_id,
+            decision_str,
+            &caller,
+            Some(server.id.clone()),
+            &tool_name,
+            depth,
+            total_ms,
+            &all_findings,
+            was_normalized || result_was_normalized,
+            &result_decision,
         );
         spawn_mcp_audit(
-            &state, &trace_id, &request_id, &caller, &decision, &result_decision,
-            "enforce", &tool_name, depth, detection_ms, policy_ms, total_ms,
+            &state,
+            &trace_id,
+            &request_id,
+            &caller,
+            &decision,
+            &result_decision,
+            "enforce",
+            &tool_name,
+            depth,
+            detection_ms,
+            policy_ms,
+            total_ms,
             was_normalized || result_was_normalized,
         );
 
@@ -477,8 +554,15 @@ async fn handle_sampling_create_message(
         .map(|arr| {
             arr.iter()
                 .map(|m| ChatMessage {
-                    role: m.get("role").and_then(|r| r.as_str()).unwrap_or("user").to_owned(),
-                    content: m.get("content").cloned().unwrap_or(serde_json::Value::String(String::new())),
+                    role: m
+                        .get("role")
+                        .and_then(|r| r.as_str())
+                        .unwrap_or("user")
+                        .to_owned(),
+                    content: m
+                        .get("content")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::String(String::new())),
                     name: None,
                     tool_call_id: None,
                     tool_calls: None,
@@ -497,11 +581,19 @@ async fn handle_sampling_create_message(
         caller: caller.clone(),
         governance_depth: depth,
     };
-    let pipeline_result = state.pipeline.run(inspection_input).instrument(span.clone()).await;
+    let pipeline_result = state
+        .pipeline
+        .run(inspection_input)
+        .instrument(span.clone())
+        .await;
     let findings = pipeline_result.findings;
     let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
 
-    let model_name = chat_body.get("model").and_then(|m| m.as_str()).unwrap_or(&default_model).to_owned();
+    let model_name = chat_body
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or(&default_model)
+        .to_owned();
     let policy_input = PolicyInput {
         request_id: trace_id.to_owned(),
         request_type: RequestType::McpSampling,
@@ -518,7 +610,12 @@ async fn handle_sampling_create_message(
         timestamp: chrono::Utc::now().timestamp_millis(),
     };
     let policy_start = Instant::now();
-    let decision = match state.policy_engine.evaluate(&policy_input).instrument(span.clone()).await {
+    let decision = match state
+        .policy_engine
+        .evaluate(&policy_input)
+        .instrument(span.clone())
+        .await
+    {
         Ok(d) => d,
         Err(e) => {
             warn!(error = %e, "Sampling policy eval failed");
@@ -530,8 +627,17 @@ async fn handle_sampling_create_message(
     if decision.effective_action.is_blocking() {
         let resp = mcp_block_response(mcp_req, &decision, trace_id, dash_base);
         spawn_mcp_audit(
-            state, trace_id, request_id, caller, &decision, &decision,
-            "enforce", "sampling/createMessage", depth, detection_ms, policy_ms,
+            state,
+            trace_id,
+            request_id,
+            caller,
+            &decision,
+            &decision,
+            "enforce",
+            "sampling/createMessage",
+            depth,
+            detection_ms,
+            policy_ms,
             overall_start.elapsed().as_secs_f64() * 1000.0,
             findings.iter().any(|f| f.was_normalized),
         );
@@ -572,13 +678,18 @@ async fn handle_sampling_create_message(
     let upstream_ms = upstream_start.elapsed().as_secs_f64() * 1000.0;
     let total_ms = overall_start.elapsed().as_secs_f64() * 1000.0;
 
-    let parsed: serde_json::Value = serde_json::from_slice(&resp_bytes).unwrap_or(serde_json::Value::Null);
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&resp_bytes).unwrap_or(serde_json::Value::Null);
     let text = parsed
         .pointer("/choices/0/message/content")
         .and_then(|c| c.as_str())
         .unwrap_or_default()
         .to_owned();
-    let model_used = parsed.get("model").and_then(|m| m.as_str()).unwrap_or(&model_name).to_owned();
+    let model_used = parsed
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or(&model_name)
+        .to_owned();
 
     let sampling_result = serde_json::json!({
         "jsonrpc": "2.0",
@@ -611,8 +722,18 @@ async fn handle_sampling_create_message(
 
     info!(parent: span, trace_id, decision = decision_str, duration_ms = total_ms, model = %model_used, "MCP sampling/createMessage processed");
     spawn_mcp_audit(
-        state, trace_id, request_id, caller, &decision, &decision,
-        "enforce", "sampling/createMessage", depth, detection_ms, policy_ms, total_ms,
+        state,
+        trace_id,
+        request_id,
+        caller,
+        &decision,
+        &decision,
+        "enforce",
+        "sampling/createMessage",
+        depth,
+        detection_ms,
+        policy_ms,
+        total_ms,
         findings.iter().any(|f| f.was_normalized),
     );
 
@@ -683,7 +804,10 @@ fn select_mcp_server<'a>(
     if servers.is_empty() {
         return None;
     }
-    if let Some(id) = headers.get("X-Revoc-Mcp-Server").and_then(|v| v.to_str().ok()) {
+    if let Some(id) = headers
+        .get("X-Revoc-Mcp-Server")
+        .and_then(|v| v.to_str().ok())
+    {
         if let Some(s) = servers.iter().find(|s| s.id == id) {
             return Some(s);
         }
@@ -723,7 +847,10 @@ async fn forward_to_mcp_server(
         .body(body)
         .send()
         .await
-        .map_err(|_e| revoc_core::RevocError::Upstream { status: 502, provider: server.id.clone() })?;
+        .map_err(|_e| revoc_core::RevocError::Upstream {
+            status: 502,
+            provider: server.id.clone(),
+        })?;
 
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap_or_default();
@@ -784,7 +911,9 @@ fn mcp_block_response(
         .status(StatusCode::OK) // MCP blocks are HTTP 200 with JSON-RPC error
         .header("Content-Type", "application/json")
         .header("X-Revoc-Block", "true")
-        .body(Body::from(serde_json::to_string(&block_resp).unwrap_or_default()))
+        .body(Body::from(
+            serde_json::to_string(&block_resp).unwrap_or_default(),
+        ))
         .unwrap_or_default();
 
     let block_rules_str = decision.applicable_rules.join(",");
@@ -834,7 +963,11 @@ fn spawn_mcp_audit(
         decision: action_to_str(&raw_decision.action).to_owned(),
         effective_action: action_to_str(&effective_decision.effective_action).to_owned(),
         enforcement_mode: enforcement_mode.to_owned(),
-        violated_rules: if rules.is_empty() { None } else { Some(rules.join(",")) },
+        violated_rules: if rules.is_empty() {
+            None
+        } else {
+            Some(rules.join(","))
+        },
         finding_types: None,
         model: None,
         provider: Some("mcp".to_owned()),
@@ -872,9 +1005,14 @@ fn publish_mcp_event(
 ) {
     let pii_types: Vec<String> = findings
         .iter()
-        .filter_map(|f| f.pii_entity.as_ref().map(revoc_core::PiiEntityType::to_string))
+        .filter_map(|f| {
+            f.pii_entity
+                .as_ref()
+                .map(revoc_core::PiiEntityType::to_string)
+        })
         .collect();
-    let mcp_tool = mcp_server.map_or_else(|| tool_name.to_owned(), |sid| format!("{sid}/{tool_name}"));
+    let mcp_tool =
+        mcp_server.map_or_else(|| tool_name.to_owned(), |sid| format!("{sid}/{tool_name}"));
     state.feed_bus.publish(GovernanceEvent {
         trace_id: trace_id.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
@@ -893,7 +1031,12 @@ fn publish_mcp_event(
     });
 }
 
-fn mcp_error_resp(status: u16, body: RevocErrorResponse, trace_id: &str, dash_base: &str) -> Response {
+fn mcp_error_resp(
+    status: u16,
+    body: RevocErrorResponse,
+    trace_id: &str,
+    dash_base: &str,
+) -> Response {
     use axum::response::IntoResponse;
     let mut resp = (
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

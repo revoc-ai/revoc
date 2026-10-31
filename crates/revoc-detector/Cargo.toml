@@ -8,7 +8,7 @@ repository  = "https://github.com/revoc-ai/revoc"
 
 [features]
 # Enable ONNX NER model detection. Requires the model files from models/download.sh.
-onnx = ["dep:ort", "dep:ndarray"]
+onnx = ["dep:ort"]
 
 [dependencies]
 revoc-core        = { path = "../revoc-core" }
@@ -62,7 +62,6 @@ smallvec          = { workspace = true }
 
 # ONNX NER model — optional, enabled by the "onnx" feature
 ort               = { workspace = true, optional = true }
-ndarray           = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio          = { workspace = true }

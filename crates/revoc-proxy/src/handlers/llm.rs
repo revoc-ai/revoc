@@ -13,7 +13,7 @@ use tracing::{info, warn, Instrument};
 
 use revoc_core::{
     Action, CallerContext, ChatMessage, EnforcementMode, PiiEntityType, PolicyEngine, PolicyInput,
-    RequestType, Redactor, RevocErrorResponse, SessionState, TokenUsage,
+    Redactor, RequestType, RevocErrorResponse, SessionState, TokenUsage,
 };
 use revoc_dashboard::GovernanceEvent;
 
@@ -21,7 +21,9 @@ use crate::{
     app::AppState,
     depth::check_depth,
     middleware::request_id::{GovernanceDepth, RequestId},
-    upstream::{error::should_forward_verbatim, retry::send_with_retries, streaming::proxy_sse_stream},
+    upstream::{
+        error::should_forward_verbatim, retry::send_with_retries, streaming::proxy_sse_stream,
+    },
 };
 
 /// Maximum upstream retry attempts on transient failures (transport-level
@@ -95,7 +97,14 @@ async fn run_llm_handler(
         Err(e) => {
             let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
             warn!(error = %e, "Body read error");
-            return make_error_response(413, body, &trace_id, &request_id, &dash_base, overall_start);
+            return make_error_response(
+                413,
+                body,
+                &trace_id,
+                &request_id,
+                &dash_base,
+                overall_start,
+            );
         }
     };
 
@@ -104,14 +113,29 @@ async fn run_llm_handler(
         Ok(v) => v,
         Err(e) => {
             warn!(error = %e, "Request JSON parse error");
-            let body = RevocErrorResponse::request_parse_error(&trace_id, &e.to_string(), &dash_base);
-            return make_error_response(400, body, &trace_id, &request_id, &dash_base, overall_start);
+            let body =
+                RevocErrorResponse::request_parse_error(&trace_id, &e.to_string(), &dash_base);
+            return make_error_response(
+                400,
+                body,
+                &trace_id,
+                &request_id,
+                &dash_base,
+                overall_start,
+            );
         }
     };
 
     let messages = extract_messages(&parsed);
-    let model = parsed.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_owned();
-    let is_stream = parsed.get("stream").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let model = parsed
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or("unknown")
+        .to_owned();
+    let is_stream = parsed
+        .get("stream")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
 
     // ── Step 4: Extract context ───────────────────────────────────────────────
     let governance_depth = depth;
@@ -185,7 +209,14 @@ async fn run_llm_handler(
             warn!(error = %e, "Policy evaluation failed");
             if !state.config.policy.fail_open {
                 let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
-                return make_error_response(503, body, &trace_id, &request_id, &dash_base, overall_start);
+                return make_error_response(
+                    503,
+                    body,
+                    &trace_id,
+                    &request_id,
+                    &dash_base,
+                    overall_start,
+                );
             }
             revoc_core::PolicyDecision::allow()
         }
@@ -209,9 +240,8 @@ async fn run_llm_handler(
                 decision.applicable_rules.clone(),
                 &dash_base,
             );
-            let mut resp = make_error_response(
-                403, body, &trace_id, &request_id, &dash_base, overall_start,
-            );
+            let mut resp =
+                make_error_response(403, body, &trace_id, &request_id, &dash_base, overall_start);
             // Add decision / rules headers
             if let Ok(v) = action_to_str(&effective.effective_action).parse::<HeaderValue>() {
                 resp.headers_mut().insert("X-Revoc-Decision", v);
@@ -303,7 +333,10 @@ async fn run_llm_handler(
             return resp;
         }
         Action::Redact => {
-            match state.redactor.redact_body(&body_bytes, &findings, &decision) {
+            match state
+                .redactor
+                .redact_body(&body_bytes, &findings, &decision)
+            {
                 Ok((redacted, _)) => redacted,
                 Err(e) => {
                     warn!(error = %e, "Redaction failed");
@@ -379,12 +412,22 @@ async fn run_llm_handler(
         Err(e) => {
             warn!(error = %e, "Upstream request failed (after retries)");
             let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
-            let status = if matches!(e, revoc_core::RevocError::Configuration(_) | revoc_core::RevocError::Security(_)) {
+            let status = if matches!(
+                e,
+                revoc_core::RevocError::Configuration(_) | revoc_core::RevocError::Security(_)
+            ) {
                 503
             } else {
                 502
             };
-            return make_error_response(status, body, &trace_id, &request_id, &dash_base, overall_start);
+            return make_error_response(
+                status,
+                body,
+                &trace_id,
+                &request_id,
+                &dash_base,
+                overall_start,
+            );
         }
     };
 
@@ -397,8 +440,8 @@ async fn run_llm_handler(
 
     // ── Step 18: Forward upstream 4xx/5xx verbatim ────────────────────────────
     if should_forward_verbatim(upstream_status) {
-        let status = StatusCode::from_u16(upstream_status)
-            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let upstream_headers = upstream_resp.headers().clone();
         let body_bytes = upstream_resp.bytes().await.unwrap_or_default();
 
@@ -508,16 +551,28 @@ async fn run_llm_handler(
         environment: Some(state.config.server.environment.clone()),
         decision: decision_str.to_owned(),
         effective_action: action_to_str(&effective.effective_action).to_owned(),
-        enforcement_mode: if enforcement_mode == EnforcementMode::Shadow { "shadow".to_owned() } else { "enforce".to_owned() },
+        enforcement_mode: if enforcement_mode == EnforcementMode::Shadow {
+            "shadow".to_owned()
+        } else {
+            "enforce".to_owned()
+        },
         violated_rules: rules_str.clone(),
-        finding_types: if finding_types.is_empty() { None } else { Some(finding_types.join(",")) },
+        finding_types: if finding_types.is_empty() {
+            None
+        } else {
+            Some(finding_types.join(","))
+        },
         model: Some(model.clone()),
         provider: Some(provider.name.clone()),
         tool_name: None,
         request_type: Some(format!("{request_type:?}")),
         governance_depth: i64::from(governance_depth),
-        prompt_tokens: token_usage.as_ref().map(|t| i64::try_from(t.prompt_tokens).unwrap_or(i64::MAX)),
-        completion_tokens: token_usage.as_ref().map(|t| i64::try_from(t.completion_tokens).unwrap_or(i64::MAX)),
+        prompt_tokens: token_usage
+            .as_ref()
+            .map(|t| i64::try_from(t.prompt_tokens).unwrap_or(i64::MAX)),
+        completion_tokens: token_usage
+            .as_ref()
+            .map(|t| i64::try_from(t.completion_tokens).unwrap_or(i64::MAX)),
         estimated_cost_usd: token_usage.as_ref().and_then(|t| t.estimated_cost_usd),
         duration_ms: Some(total_ms),
         detection_ms: Some(detection_ms),
@@ -561,8 +616,16 @@ async fn run_llm_handler(
         model,
         "LLM request processed"
     );
-    state.metrics.revoc_requests_total
-        .with_label_values(&[&state.config.server.environment, &provider.name, decision_str, "", ""])
+    state
+        .metrics
+        .revoc_requests_total
+        .with_label_values(&[
+            &state.config.server.environment,
+            &provider.name,
+            decision_str,
+            "",
+            "",
+        ])
         .inc();
 
     resp
@@ -577,9 +640,17 @@ async fn run_llm_handler(
 fn extract_token_usage(resp_body: &[u8], model: &str) -> Option<TokenUsage> {
     let parsed: serde_json::Value = serde_json::from_slice(resp_body).ok()?;
     let usage = parsed.get("usage")?;
-    let prompt_tokens = usage.get("prompt_tokens").and_then(serde_json::Value::as_u64).unwrap_or(0);
-    let completion_tokens = usage.get("completion_tokens").and_then(serde_json::Value::as_u64).unwrap_or(0);
-    let total_tokens = usage.get("total_tokens").and_then(serde_json::Value::as_u64)
+    let prompt_tokens = usage
+        .get("prompt_tokens")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let completion_tokens = usage
+        .get("completion_tokens")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let total_tokens = usage
+        .get("total_tokens")
+        .and_then(serde_json::Value::as_u64)
         .unwrap_or(prompt_tokens + completion_tokens);
 
     let (prompt_rate, completion_rate) = model_pricing_per_1k(model);
@@ -588,7 +659,12 @@ fn extract_token_usage(resp_body: &[u8], model: &str) -> Option<TokenUsage> {
             + (completion_tokens as f64 / 1000.0) * completion_rate,
     );
 
-    Some(TokenUsage { prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd })
+    Some(TokenUsage {
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        estimated_cost_usd,
+    })
 }
 
 /// Static USD-per-1K-token pricing `(prompt, completion)` for well-known
@@ -675,16 +751,13 @@ pub fn set_revoc_headers(
     let pairs: &[(&str, &str)] = &[
         ("X-Revoc-Trace-ID", trace_id),
         ("X-Revoc-Decision", decision),
-        ("X-Revoc-Dashboard", dashboard_url),  // NON-NEGOTIABLE
-        ("X-Revoc-Timing", timing),             // NON-NEGOTIABLE
+        ("X-Revoc-Dashboard", dashboard_url), // NON-NEGOTIABLE
+        ("X-Revoc-Timing", timing),           // NON-NEGOTIABLE
     ];
 
     for (name, value) in pairs {
         let sanitized = sanitize_header_value(value);
-        if let (Ok(n), Ok(v)) = (
-            name.parse::<HeaderName>(),
-            sanitized.parse::<HeaderValue>(),
-        ) {
+        if let (Ok(n), Ok(v)) = (name.parse::<HeaderName>(), sanitized.parse::<HeaderValue>()) {
             headers.insert(n, v);
         }
     }
@@ -776,9 +849,9 @@ fn extract_messages(parsed: &serde_json::Value) -> Vec<ChatMessage> {
 /// Convert an [`Action`] to a lowercase static string for header values.
 pub fn action_to_str(a: &Action) -> &'static str {
     match a {
-        Action::Allow  => "allow",
-        Action::Block  => "block",
+        Action::Allow => "allow",
+        Action::Block => "block",
         Action::Redact => "redact",
-        Action::Audit  => "audit",
+        Action::Audit => "audit",
     }
 }

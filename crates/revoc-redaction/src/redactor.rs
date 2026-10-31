@@ -8,9 +8,7 @@ use std::collections::HashMap;
 
 use tracing::info;
 
-use revoc_core::{
-    Finding, FindingType, PiiEntityType, PolicyDecision, Redactor, RevocError,
-};
+use revoc_core::{Finding, FindingType, PiiEntityType, PolicyDecision, Redactor, RevocError};
 use revoc_telemetry::RevocMetrics;
 
 use crate::{
@@ -99,8 +97,8 @@ fn redact_impl(
     let body = body.as_ref();
 
     // Parse body once for immutable text extraction (needed by Hash strategy)
-    let parsed = serde_json::from_slice::<serde_json::Value>(body)
-        .unwrap_or(serde_json::Value::Null);
+    let parsed =
+        serde_json::from_slice::<serde_json::Value>(body).unwrap_or(serde_json::Value::Null);
 
     // Build span replacements grouped by field path
     let mut field_groups: HashMap<String, Vec<SpanReplacement>> = HashMap::new();
@@ -176,8 +174,7 @@ fn redact_impl(
 mod tests {
     use super::*;
     use revoc_core::{
-        DetectionTier, Finding, FindingType, PiiEntityType, PolicyDecision,
-        Severity, TextSpan,
+        DetectionTier, Finding, FindingType, PiiEntityType, PolicyDecision, Severity, TextSpan,
     };
     use revoc_telemetry::RevocMetrics;
 
@@ -198,12 +195,7 @@ mod tests {
     }
 
     /// Build a finding with a span into messages[0].content.
-    fn msg_finding(
-        ft: FindingType,
-        entity: PiiEntityType,
-        start: usize,
-        end: usize,
-    ) -> Finding {
+    fn msg_finding(ft: FindingType, entity: PiiEntityType, start: usize, end: usize) -> Finding {
         let mut f = Finding::new(ft, Severity::High, DetectionTier::Regex).with_pii(entity);
         f.span = Some(TextSpan {
             start,
@@ -221,11 +213,16 @@ mod tests {
         // "My SSN is 123-45-6789" — SSN starts at byte 10, len 11
         let body = user_body("My SSN is 123-45-6789");
         let finding = msg_finding(FindingType::Pii, PiiEntityType::UsSsn, 10, 21);
-        let (out, findings) = redactor().redact_body(&body, &[finding], &redact_decision()).unwrap();
+        let (out, findings) = redactor()
+            .redact_body(&body, &[finding], &redact_decision())
+            .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let content = json["messages"][0]["content"].as_str().unwrap();
-        assert!(!content.contains("123-45-6789"), "SSN must be removed from output");
+        assert!(
+            !content.contains("123-45-6789"),
+            "SSN must be removed from output"
+        );
         assert!(findings[0].redaction_applied);
     }
 
@@ -234,12 +231,20 @@ mod tests {
         // "Contact: alice@example.com" — email starts at byte 9, len 17
         let body = user_body("Contact: alice@example.com");
         let finding = msg_finding(FindingType::Pii, PiiEntityType::EmailAddress, 9, 26);
-        let (out, _) = redactor().redact_body(&body, &[finding], &redact_decision()).unwrap();
+        let (out, _) = redactor()
+            .redact_body(&body, &[finding], &redact_decision())
+            .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let content = json["messages"][0]["content"].as_str().unwrap();
-        assert!(!content.contains("alice@"), "Original email must not appear");
-        assert!(content.contains("REDACTED"), "Masked content must contain REDACTED");
+        assert!(
+            !content.contains("alice@"),
+            "Original email must not appear"
+        );
+        assert!(
+            content.contains("REDACTED"),
+            "Masked content must contain REDACTED"
+        );
     }
 
     #[test]
@@ -247,20 +252,35 @@ mod tests {
         let key = "AKIAIOSFODNN7EXAMPLE";
         let body = user_body(&format!("key: {key}"));
         // "key: " = 5 bytes
-        let finding = msg_finding(FindingType::SecretExposure, PiiEntityType::AwsAccessKey, 5, 5 + key.len());
-        let (out, _) = redactor().redact_body(&body, &[finding], &redact_decision()).unwrap();
+        let finding = msg_finding(
+            FindingType::SecretExposure,
+            PiiEntityType::AwsAccessKey,
+            5,
+            5 + key.len(),
+        );
+        let (out, _) = redactor()
+            .redact_body(&body, &[finding], &redact_decision())
+            .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let content = json["messages"][0]["content"].as_str().unwrap();
-        assert!(!content.contains("AKIA"), "AWS key must not appear in output");
-        assert!(content.contains("[hash:"), "AWS key must be replaced with hash");
+        assert!(
+            !content.contains("AKIA"),
+            "AWS key must not appear in output"
+        );
+        assert!(
+            content.contains("[hash:"),
+            "AWS key must be replaced with hash"
+        );
     }
 
     #[test]
     fn test_credit_card_removed_from_output() {
         let body = user_body("card: 4532015112830366");
         let finding = msg_finding(FindingType::Pii, PiiEntityType::CreditCard, 6, 22);
-        let (out, _) = redactor().redact_body(&body, &[finding], &redact_decision()).unwrap();
+        let (out, _) = redactor()
+            .redact_body(&body, &[finding], &redact_decision())
+            .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let content = json["messages"][0]["content"].as_str().unwrap();
@@ -275,8 +295,9 @@ mod tests {
         let ssn = msg_finding(FindingType::Pii, PiiEntityType::UsSsn, 5, 16);
         let email = msg_finding(FindingType::Pii, PiiEntityType::EmailAddress, 23, 34);
 
-        let (out, findings) =
-            redactor().redact_body(&body, &[ssn, email], &redact_decision()).unwrap();
+        let (out, findings) = redactor()
+            .redact_body(&body, &[ssn, email], &redact_decision())
+            .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let content = json["messages"][0]["content"].as_str().unwrap();
@@ -293,7 +314,9 @@ mod tests {
             .with_pii(PiiEntityType::UsSsn);
         f.span = None;
 
-        let (out, findings) = redactor().redact_body(&body, &[f], &redact_decision()).unwrap();
+        let (out, findings) = redactor()
+            .redact_body(&body, &[f], &redact_decision())
+            .unwrap();
 
         let json_out: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(
@@ -308,7 +331,9 @@ mod tests {
     fn test_output_valid_json_after_redaction() {
         let body = user_body("My SSN is 123-45-6789 and email is test@test.com");
         let ssn = msg_finding(FindingType::Pii, PiiEntityType::UsSsn, 10, 21);
-        let (out, _) = redactor().redact_body(&body, &[ssn], &redact_decision()).unwrap();
+        let (out, _) = redactor()
+            .redact_body(&body, &[ssn], &redact_decision())
+            .unwrap();
 
         let result = serde_json::from_slice::<serde_json::Value>(&out);
         assert!(result.is_ok(), "Output must be valid JSON after redaction");
@@ -337,10 +362,16 @@ mod tests {
             f
         };
 
-        let (out, _) = redactor().redact_body(&body, &[ssn], &redact_decision()).unwrap();
+        let (out, _) = redactor()
+            .redact_body(&body, &[ssn], &redact_decision())
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
 
-        assert_eq!(json["model"].as_str().unwrap(), "gpt-4o", "model field must be unchanged");
+        assert_eq!(
+            json["model"].as_str().unwrap(),
+            "gpt-4o",
+            "model field must be unchanged"
+        );
         assert_eq!(
             json["messages"][0]["content"].as_str().unwrap(),
             "You are a helpful assistant.",
@@ -351,8 +382,11 @@ mod tests {
     #[test]
     fn test_tool_manifest_risk_not_redacted() {
         let body = user_body("dangerous tool description");
-        let mut f =
-            Finding::new(FindingType::ToolManifestRisk, Severity::High, DetectionTier::ManifestAnalysis);
+        let mut f = Finding::new(
+            FindingType::ToolManifestRisk,
+            Severity::High,
+            DetectionTier::ManifestAnalysis,
+        );
         f.span = Some(TextSpan {
             start: 0,
             end: 9,
@@ -360,7 +394,9 @@ mod tests {
             value: None,
         });
 
-        let (out, findings) = redactor().redact_body(&body, &[f], &redact_decision()).unwrap();
+        let (out, findings) = redactor()
+            .redact_body(&body, &[f], &redact_decision())
+            .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(
@@ -368,7 +404,10 @@ mod tests {
             "dangerous tool description",
             "ToolManifestRisk finding must not modify the body"
         );
-        assert!(!findings[0].redaction_applied, "ToolManifestRisk must not be marked redacted");
+        assert!(
+            !findings[0].redaction_applied,
+            "ToolManifestRisk must not be marked redacted"
+        );
     }
 
     #[test]
@@ -393,7 +432,10 @@ mod tests {
 
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let content = json["content"].as_str().unwrap();
-        assert!(!content.contains("123-45-6789"), "SSN must be redacted from MCP result");
+        assert!(
+            !content.contains("123-45-6789"),
+            "SSN must be redacted from MCP result"
+        );
     }
 
     // ── Proptest: must never panic, output must be valid UTF-8 ────────────────

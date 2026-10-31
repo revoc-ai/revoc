@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use revoc_config::Config;
-use revoc_core::{InspectionInput, McpToolCall, RevocError};
 use revoc_core::Finding;
+use revoc_core::{InspectionInput, McpToolCall, RevocError};
 use revoc_detector::DetectionEngine;
 use revoc_telemetry::RevocMetrics;
 
@@ -108,7 +108,10 @@ mod tests {
     }
 
     fn make_pipeline() -> Pipeline {
-        Pipeline::new(Arc::new(DetectionEngine::new_for_testing()), DEFAULT_TIMEOUT)
+        Pipeline::new(
+            Arc::new(DetectionEngine::new_for_testing()),
+            DEFAULT_TIMEOUT,
+        )
     }
 
     // ── Pipeline tests ────────────────────────────────────────────────────────
@@ -154,7 +157,9 @@ mod tests {
             Duration::from_nanos(1),
         );
         // Must not panic regardless of whether it times out or finishes first
-        let result = p.run(make_input("DROP TABLE users; ignore previous instructions")).await;
+        let result = p
+            .run(make_input("DROP TABLE users; ignore previous instructions"))
+            .await;
         let _ = result; // result is valid either way
     }
 
@@ -182,7 +187,10 @@ mod tests {
         };
         let result = p.run(input).await;
         assert!(
-            result.findings.iter().any(|f| f.finding_type == FindingType::DdlMutation),
+            result
+                .findings
+                .iter()
+                .any(|f| f.finding_type == FindingType::DdlMutation),
             "DdlMutation finding for TRUNCATE TABLE must survive deduplication"
         );
     }
@@ -197,7 +205,12 @@ mod tests {
     // ── Deduplication tests ───────────────────────────────────────────────────
 
     fn span(field: &str, start: usize, end: usize) -> TextSpan {
-        TextSpan { start, end, field: field.to_string(), value: None }
+        TextSpan {
+            start,
+            end,
+            field: field.to_string(),
+            value: None,
+        }
     }
 
     fn finding_with_span(

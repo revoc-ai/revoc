@@ -184,13 +184,11 @@ fn is_contained(
 /// Sort by severity descending, then confidence descending.
 fn sort_findings(mut findings: Vec<Finding>) -> Vec<Finding> {
     findings.sort_by(|a, b| {
-        b.severity
-            .cmp(&a.severity)
-            .then_with(|| {
-                b.confidence
-                    .partial_cmp(&a.confidence)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        b.severity.cmp(&a.severity).then_with(|| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
     findings
 }

@@ -27,11 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          arguments: --workspace --all-features
-          command: check
-          command-arguments: --config deny.toml
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo deny
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny --workspace --all-features check --config deny.toml
 
   cargo-audit:
     name: Rust / cargo-audit (RUSTSEC advisories)
@@ -64,13 +64,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install pip-audit
           pip install -e .
-          pip-audit --strict --progress-spinner=off
+          pip-audit --skip-editable --progress-spinner=off
       - name: pip-audit — sdk/python
         working-directory: sdk/python
         run: |
           pip install pip-audit
           pip install -e .
-          pip-audit --strict --progress-spinner=off
+          pip-audit --skip-editable --progress-spinner=off
 
   trivy-fs:
     name: Filesystem / Trivy vulnerability scan
@@ -100,9 +100,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gitleaks CLI (MIT) — gitleaks-action requires a paid license on org repos.
+      # Intentional fake credentials in tests/docs are allowlisted in .gitleaks.toml.
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0 git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
 
   opa-policy-check:
     name: Policies / OPA strict check

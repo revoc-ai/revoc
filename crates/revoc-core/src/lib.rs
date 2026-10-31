@@ -22,15 +22,13 @@ pub mod types;
 
 pub use error::RevocError;
 
+pub use traits::{DetectionStage, InspectionInput, PolicyEngine, Redactor};
 pub use types::decision::{
     Action, CallerContext, ChatMessage, EnforcementMode, PolicyDecision, PolicyEngineMode,
     PolicyInput, PolicyRuleTier, RequestType, SessionState, TokenUsage,
 };
-pub use types::finding::{
-    DetectionTier, Finding, FindingType, PiiEntityType, Severity, TextSpan,
-};
+pub use types::finding::{DetectionTier, Finding, FindingType, PiiEntityType, Severity, TextSpan};
 pub use types::mcp::{
     McpBlockResponse, McpMethod, McpRawRequest, McpToolCall, ToolManifestFinding,
 };
 pub use types::openai::RevocErrorResponse;
-pub use traits::{DetectionStage, InspectionInput, PolicyEngine, Redactor};

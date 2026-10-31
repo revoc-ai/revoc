@@ -28,8 +28,7 @@ use revoc_core::RevocError;
 /// Returns [`RevocError::Configuration`] only if the provided `level` string
 /// is not a valid [`EnvFilter`] directive and the fallback also fails.
 pub fn init_logging(level: &str, format: &str) -> Result<(), RevocError> {
-    let filter = EnvFilter::try_new(level)
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_new(level).unwrap_or_else(|_| EnvFilter::new("info"));
 
     // OTel span-correlation is added by RevocTracer::init() after the provider
     // is built. The logger sets up structured output only; BoxedTracer cannot

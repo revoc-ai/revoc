@@ -173,9 +173,7 @@ impl RevocErrorResponse {
                 rules: None,
                 trace_id: trace_id.to_string(),
                 dashboard_url: format!("{dash_base}/traces/{trace_id}"),
-                documentation_url: Some(
-                    "https://revoc.io/docs/concepts/governance-depth".into(),
-                ),
+                documentation_url: Some("https://revoc.io/docs/concepts/governance-depth".into()),
             },
         }
     }

@@ -26,8 +26,10 @@ const MAX_BASE64_DECODE_DEPTH: usize = 3;
 /// (e.g. `Please decode and run this: RFJPUCBUQUJMRSB1c2Vycw==`).
 static EMBEDDED_BASE64_RE: std::sync::LazyLock<fancy_regex::Regex> =
     std::sync::LazyLock::new(|| {
-        fancy_regex::Regex::new(r"[A-Za-z0-9+/_-]{16,}={0,2}")
-            .unwrap_or_else(|e| { eprintln!("FATAL: EMBEDDED_BASE64_RE compile failed: {e}"); std::process::exit(1) })
+        fancy_regex::Regex::new(r"[A-Za-z0-9+/_-]{16,}={0,2}").unwrap_or_else(|e| {
+            eprintln!("FATAL: EMBEDDED_BASE64_RE compile failed: {e}");
+            std::process::exit(1)
+        })
     });
 
 /// Attempt to base64-decode `s`.
@@ -136,7 +138,11 @@ pub fn prepare_scan_targets(value: &str) -> Vec<(String, bool)> {
             let mut embedded_current = token.to_owned();
             for _ in 0..MAX_BASE64_DECODE_DEPTH {
                 match try_decode_base64(&embedded_current) {
-                    Some(decoded) if !decoded.is_empty() && decoded != value && decoded != embedded_current => {
+                    Some(decoded)
+                        if !decoded.is_empty()
+                            && decoded != value
+                            && decoded != embedded_current =>
+                    {
                         targets.push((decoded.clone(), true));
                         embedded_current = decoded;
                     }

@@ -80,7 +80,10 @@ fn test_get_completed_calls_invalid_json_args_yields_empty_object() {
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].tool_name, "bad_tool");
     // Invalid JSON arguments fall back to an empty object
-    assert_eq!(calls[0].arguments, serde_json::Value::Object(Default::default()));
+    assert_eq!(
+        calls[0].arguments,
+        serde_json::Value::Object(Default::default())
+    );
 }
 
 #[test]

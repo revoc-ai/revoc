@@ -127,10 +127,10 @@ impl AnalyticsWindow {
     /// Parse from a query-string value (`"1h"`, `"24h"`, `"7d"`, `"30d"`).
     pub fn parse_window(s: &str) -> Self {
         match s {
-            "1h"  => Self::Hour1,
-            "7d"  => Self::Day7,
+            "1h" => Self::Hour1,
+            "7d" => Self::Day7,
             "30d" => Self::Day30,
-            _     => Self::Hour24,
+            _ => Self::Hour24,
         }
     }
 
@@ -138,10 +138,10 @@ impl AnalyticsWindow {
     /// this window — used to filter `audit_events.created_at >= ...`.
     pub fn sqlite_modifier(&self) -> &'static str {
         match self {
-            Self::Hour1  => "-1 hours",
+            Self::Hour1 => "-1 hours",
             Self::Hour24 => "-24 hours",
-            Self::Day7   => "-7 days",
-            Self::Day30  => "-30 days",
+            Self::Day7 => "-7 days",
+            Self::Day30 => "-30 days",
         }
     }
 
@@ -151,7 +151,7 @@ impl AnalyticsWindow {
     pub fn bucket_strftime(&self) -> &'static str {
         match self {
             Self::Hour1 | Self::Hour24 => "%Y-%m-%dT%H:00:00Z",
-            Self::Day7 | Self::Day30   => "%Y-%m-%dT00:00:00Z",
+            Self::Day7 | Self::Day30 => "%Y-%m-%dT00:00:00Z",
         }
     }
 }
@@ -246,10 +246,7 @@ pub trait AuditStore: Send + Sync {
     ) -> Result<AnalyticsResult, revoc_core::RevocError>;
 
     /// Delete events older than `retention_days`.
-    async fn cleanup_old_events(
-        &self,
-        retention_days: u32,
-    ) -> Result<u64, revoc_core::RevocError>;
+    async fn cleanup_old_events(&self, retention_days: u32) -> Result<u64, revoc_core::RevocError>;
 }
 
 // ── KillSwitchControl ─────────────────────────────────────────────────────────

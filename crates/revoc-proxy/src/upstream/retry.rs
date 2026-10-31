@@ -28,11 +28,7 @@ pub fn backoff_delay(attempt: u32) -> Duration {
 /// (the numeric form; HTTP-date values are not produced by REVOC's
 /// configured upstream providers and are treated as absent).
 pub fn parse_retry_after(header: &str) -> Option<Duration> {
-    header
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .map(Duration::from_secs)
+    header.trim().parse::<u64>().ok().map(Duration::from_secs)
 }
 
 /// Execute `f` with up to `max_retries` retry attempts using exponential
@@ -48,7 +44,11 @@ where
     loop {
         if attempt > 0 {
             let delay = backoff_delay(attempt - 1);
-            warn!(attempt, delay_ms = delay.as_millis(), "Retrying upstream request");
+            warn!(
+                attempt,
+                delay_ms = delay.as_millis(),
+                "Retrying upstream request"
+            );
             tokio::time::sleep(delay).await;
         }
 
@@ -101,7 +101,9 @@ pub async fn send_with_retries(
                         .and_then(parse_retry_after)
                         .unwrap_or_else(|| backoff_delay(attempt));
                     warn!(
-                        attempt, status, delay_ms = delay.as_millis(),
+                        attempt,
+                        status,
+                        delay_ms = delay.as_millis(),
                         "Retrying upstream request (retryable status)"
                     );
                     tokio::time::sleep(delay).await;

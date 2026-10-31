@@ -42,7 +42,10 @@ pub async fn wait_for_signal() -> Result<(), RevocError> {
 /// 3. Drain in-flight async audit writes
 /// 4. Log "Shutdown complete"
 pub async fn graceful_shutdown(state: &AppState, timeout: Duration) {
-    info!("Graceful shutdown started (timeout: {}s)", timeout.as_secs());
+    info!(
+        "Graceful shutdown started (timeout: {}s)",
+        timeout.as_secs()
+    );
 
     // Give in-flight requests time to complete
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -51,12 +54,17 @@ pub async fn graceful_shutdown(state: &AppState, timeout: Duration) {
     // batched writes must not be dropped on the floor at shutdown).
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let pending = state.pending_audit_writes.load(std::sync::atomic::Ordering::SeqCst);
+        let pending = state
+            .pending_audit_writes
+            .load(std::sync::atomic::Ordering::SeqCst);
         if pending == 0 {
             break;
         }
         if tokio::time::Instant::now() >= deadline {
-            warn!(pending, "Shutdown timeout reached with audit writes still in flight");
+            warn!(
+                pending,
+                "Shutdown timeout reached with audit writes still in flight"
+            );
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;

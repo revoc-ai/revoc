@@ -22,7 +22,10 @@ impl PresidioEnricher {
             .timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();
-        Self { client, url: url.into() }
+        Self {
+            client,
+            url: url.into(),
+        }
     }
 
     /// Analyze `text` and return raw Presidio analyzer results.

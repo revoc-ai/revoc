@@ -7,7 +7,10 @@ use bytes::Bytes;
 use futures::StreamExt as _;
 use tracing::warn;
 
-use revoc_core::{CallerContext, ChatMessage, Finding, FindingType, McpToolCall, PolicyEngine, PolicyInput, RequestType};
+use revoc_core::{
+    CallerContext, ChatMessage, Finding, FindingType, McpToolCall, PolicyEngine, PolicyInput,
+    RequestType,
+};
 
 use crate::app::AppState;
 use crate::streaming::{
@@ -109,12 +112,16 @@ pub async fn proxy_sse_stream(
                                 // §23 Rule 22 — finish_reason=tool_calls MUST NOT reach
                                 // the client before the accumulated calls are governed.
                                 let governance = governance_on_accumulated_calls(
-                                    &state_clone, &caller_clone, &trace_id_owned, &calls,
+                                    &state_clone,
+                                    &caller_clone,
+                                    &trace_id_owned,
+                                    &calls,
                                 )
                                 .await;
                                 if let Some(reason) = governance {
                                     warn!(trace_id = %trace_id_owned, reason, "Streamed tool calls blocked by governance");
-                                    let filter_chunk = ToolCallAccumulator::synthetic_content_filter_chunk();
+                                    let filter_chunk =
+                                        ToolCallAccumulator::synthetic_content_filter_chunk();
                                     let _ = tx.send(Ok(format_sse_event(&filter_chunk))).await;
                                     tool_calls_blocked = true;
                                 }
@@ -131,7 +138,9 @@ pub async fn proxy_sse_stream(
 
             // Sliding window scan — runs detection over the rolling window so
             // patterns spanning multiple SSE chunks are still caught (SPEC.md §12)
-            let result = scanner.process_chunk(&data, &caller_clone, caller_clone.governance_depth).await;
+            let result = scanner
+                .process_chunk(&data, &caller_clone, caller_clone.governance_depth)
+                .await;
 
             if let Some(reason) = result.block_reason {
                 warn!(trace_id = %trace_id_owned, reason, "Stream blocked by governance");
@@ -159,7 +168,16 @@ pub async fn proxy_sse_stream(
             let _ = tx.send(Ok(Bytes::from_static(SSE_DONE))).await;
         }
 
-        write_stream_audit(&state_clone, &caller_clone, &trace_id_owned, &full_stream_text, blocked, stream_block_findings, stream_start).await;
+        write_stream_audit(
+            &state_clone,
+            &caller_clone,
+            &trace_id_owned,
+            &full_stream_text,
+            blocked,
+            stream_block_findings,
+            stream_start,
+        )
+        .await;
     });
 
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
@@ -232,33 +250,32 @@ fn stream_finding_to_rule_id(f: &Finding) -> String {
             .pii_entity
             .as_ref()
             .map_or("pii_block_v1", |e| match e {
-                PiiEntityType::UsSsn           => "pii_ssn_v1",
-                PiiEntityType::CreditCard       => "pii_credit_card_v1",
-                PiiEntityType::IbanCode         => "pii_iban_v1",
-                PiiEntityType::BankAccount      => "pii_bank_account_v1",
-                PiiEntityType::UsPassport       => "pii_passport_v1",
-                PiiEntityType::UsDriverLicense  => "pii_driver_license_v1",
-                PiiEntityType::EmailAddress     => "pii_email_v1",
-                PiiEntityType::PhoneNumber      => "pii_phone_v1",
-                PiiEntityType::IpAddressV4
-                | PiiEntityType::IpAddressV6    => "pii_ip_address_v1",
+                PiiEntityType::UsSsn => "pii_ssn_v1",
+                PiiEntityType::CreditCard => "pii_credit_card_v1",
+                PiiEntityType::IbanCode => "pii_iban_v1",
+                PiiEntityType::BankAccount => "pii_bank_account_v1",
+                PiiEntityType::UsPassport => "pii_passport_v1",
+                PiiEntityType::UsDriverLicense => "pii_driver_license_v1",
+                PiiEntityType::EmailAddress => "pii_email_v1",
+                PiiEntityType::PhoneNumber => "pii_phone_v1",
+                PiiEntityType::IpAddressV4 | PiiEntityType::IpAddressV6 => "pii_ip_address_v1",
                 PiiEntityType::MedicalRecordNumber => "pii_mrn_v1",
-                PiiEntityType::DateOfBirth      => "pii_dob_v1",
-                _                               => "pii_block_v1",
+                PiiEntityType::DateOfBirth => "pii_dob_v1",
+                _ => "pii_block_v1",
             })
             .to_owned(),
-        FindingType::SecretExposure     => "secret_block_v1".to_owned(),
-        FindingType::PromptInjection    => "sec_prompt_injection_v1".to_owned(),
+        FindingType::SecretExposure => "secret_block_v1".to_owned(),
+        FindingType::PromptInjection => "sec_prompt_injection_v1".to_owned(),
         FindingType::SystemPromptExtraction => "sec_sysextract_v1".to_owned(),
-        FindingType::DdlMutation        => "sec_ddl_mutation_v1".to_owned(),
-        FindingType::SsrfAttempt        => "sec_ssrf_v1".to_owned(),
-        FindingType::PathTraversal      => "sec_path_traversal_v1".to_owned(),
-        FindingType::SessionAnomaly     => "session_data_exfil_v1".to_owned(),
-        FindingType::ToolManifestRisk   => "manifest_risk_v1".to_owned(),
-        FindingType::McpToolBlock       => "mcp_tool_acl_v1".to_owned(),
-        FindingType::QuotaExceeded      => "token_quota_v1".to_owned(),
-        FindingType::KeywordMatch       => "keyword_match_v1".to_owned(),
-        FindingType::Custom(s)          => format!("custom_{s}"),
+        FindingType::DdlMutation => "sec_ddl_mutation_v1".to_owned(),
+        FindingType::SsrfAttempt => "sec_ssrf_v1".to_owned(),
+        FindingType::PathTraversal => "sec_path_traversal_v1".to_owned(),
+        FindingType::SessionAnomaly => "session_data_exfil_v1".to_owned(),
+        FindingType::ToolManifestRisk => "manifest_risk_v1".to_owned(),
+        FindingType::McpToolBlock => "mcp_tool_acl_v1".to_owned(),
+        FindingType::QuotaExceeded => "token_quota_v1".to_owned(),
+        FindingType::KeywordMatch => "keyword_match_v1".to_owned(),
+        FindingType::Custom(s) => format!("custom_{s}"),
     }
 }
 
@@ -282,42 +299,48 @@ async fn write_stream_audit(
     block_findings: Vec<Finding>,
     started_at: std::time::Instant,
 ) {
-    let (findings, detection_ms, violated_rules_opt) =
-        if blocked && !block_findings.is_empty() {
-            // Authoritative findings from the sliding window block — no re-detection.
-            let rule_ids: Vec<String> =
-                block_findings.iter().map(stream_finding_to_rule_id).collect();
-            let unique_rules: Vec<String> = {
-                let mut seen = std::collections::HashSet::new();
-                rule_ids.into_iter().filter(|r| seen.insert(r.clone())).collect()
-            };
-            (block_findings, 0.0_f64, Some(unique_rules.join(",")))
-        } else {
-            // Normal path: run detection over the full assembled response text.
-            let detection_start = std::time::Instant::now();
-            let inspection_input = revoc_core::traits::InspectionInput {
-                request_id: trace_id.to_owned(),
-                request_type: RequestType::LlmResponse,
-                raw_body: bytes::Bytes::from(full_text.as_bytes().to_vec()),
-                parsed_messages: Some(vec![ChatMessage {
-                    role: "assistant".to_owned(),
-                    content: serde_json::Value::String(full_text.to_owned()),
-                    name: None,
-                    tool_call_id: None,
-                    tool_calls: None,
-                }]),
-                mcp_call: None,
-                caller: caller.clone(),
-                governance_depth: caller.governance_depth,
-            };
-            let f = state.pipeline.run(inspection_input).await.findings;
-            let ms = detection_start.elapsed().as_secs_f64() * 1000.0;
-            (f, ms, None)
+    let (findings, detection_ms, violated_rules_opt) = if blocked && !block_findings.is_empty() {
+        // Authoritative findings from the sliding window block — no re-detection.
+        let rule_ids: Vec<String> = block_findings
+            .iter()
+            .map(stream_finding_to_rule_id)
+            .collect();
+        let unique_rules: Vec<String> = {
+            let mut seen = std::collections::HashSet::new();
+            rule_ids
+                .into_iter()
+                .filter(|r| seen.insert(r.clone()))
+                .collect()
         };
+        (block_findings, 0.0_f64, Some(unique_rules.join(",")))
+    } else {
+        // Normal path: run detection over the full assembled response text.
+        let detection_start = std::time::Instant::now();
+        let inspection_input = revoc_core::traits::InspectionInput {
+            request_id: trace_id.to_owned(),
+            request_type: RequestType::LlmResponse,
+            raw_body: bytes::Bytes::from(full_text.as_bytes().to_vec()),
+            parsed_messages: Some(vec![ChatMessage {
+                role: "assistant".to_owned(),
+                content: serde_json::Value::String(full_text.to_owned()),
+                name: None,
+                tool_call_id: None,
+                tool_calls: None,
+            }]),
+            mcp_call: None,
+            caller: caller.clone(),
+            governance_depth: caller.governance_depth,
+        };
+        let f = state.pipeline.run(inspection_input).await.findings;
+        let ms = detection_start.elapsed().as_secs_f64() * 1000.0;
+        (f, ms, None)
+    };
 
     let was_normalized = findings.iter().any(|f| f.was_normalized);
-    let finding_types: Vec<String> =
-        findings.iter().map(|f| format!("{:?}", f.finding_type)).collect();
+    let finding_types: Vec<String> = findings
+        .iter()
+        .map(|f| format!("{:?}", f.finding_type))
+        .collect();
 
     let now = chrono::Utc::now();
     let decision_str = if blocked { "block" } else { "allow" };
@@ -331,9 +354,17 @@ async fn write_stream_audit(
         environment: Some(state.config.server.environment.clone()),
         decision: decision_str.to_owned(),
         effective_action: decision_str.to_owned(),
-        enforcement_mode: if caller.is_shadow_mode() { "shadow".to_owned() } else { "enforce".to_owned() },
+        enforcement_mode: if caller.is_shadow_mode() {
+            "shadow".to_owned()
+        } else {
+            "enforce".to_owned()
+        },
         violated_rules: violated_rules_opt,
-        finding_types: if finding_types.is_empty() { None } else { Some(finding_types.join(",")) },
+        finding_types: if finding_types.is_empty() {
+            None
+        } else {
+            Some(finding_types.join(","))
+        },
         model: None,
         provider: None,
         tool_name: None,

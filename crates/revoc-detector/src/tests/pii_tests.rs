@@ -10,7 +10,9 @@ fn detect(text: &str) -> Vec<revoc_core::Finding> {
 }
 
 fn has_pii(findings: &[revoc_core::Finding], entity: PiiEntityType) -> bool {
-    findings.iter().any(|f| f.pii_entity == Some(entity.clone()))
+    findings
+        .iter()
+        .any(|f| f.pii_entity == Some(entity.clone()))
 }
 
 // ── SSN ────────────────────────────────────────────────────────────────────────
@@ -18,28 +20,40 @@ fn has_pii(findings: &[revoc_core::Finding], entity: PiiEntityType) -> bool {
 #[test]
 fn test_ssn_matched() {
     let findings = detect("SSN: 123-45-6789");
-    assert!(has_pii(&findings, PiiEntityType::UsSsn), "SSN must be detected");
+    assert!(
+        has_pii(&findings, PiiEntityType::UsSsn),
+        "SSN must be detected"
+    );
 }
 
 #[test]
 fn test_ssn_no_false_positive_000() {
     // 000 area is invalid
     let findings = detect("000-45-6789");
-    assert!(!has_pii(&findings, PiiEntityType::UsSsn), "000-xx-xxxx must not match");
+    assert!(
+        !has_pii(&findings, PiiEntityType::UsSsn),
+        "000-xx-xxxx must not match"
+    );
 }
 
 #[test]
 fn test_ssn_no_false_positive_666() {
     // 666 area is invalid
     let findings = detect("666-12-3456");
-    assert!(!has_pii(&findings, PiiEntityType::UsSsn), "666-xx-xxxx must not match");
+    assert!(
+        !has_pii(&findings, PiiEntityType::UsSsn),
+        "666-xx-xxxx must not match"
+    );
 }
 
 #[test]
 fn test_ssn_no_false_positive_9xx() {
     // 9xx area is invalid
     let findings = detect("912-34-5678");
-    assert!(!has_pii(&findings, PiiEntityType::UsSsn), "9xx-xx-xxxx must not match");
+    assert!(
+        !has_pii(&findings, PiiEntityType::UsSsn),
+        "9xx-xx-xxxx must not match"
+    );
 }
 
 // ── Email ──────────────────────────────────────────────────────────────────────
@@ -62,14 +76,20 @@ fn test_email_no_match_incomplete() {
 fn test_credit_card_luhn_valid_matched() {
     // Valid Luhn: 4532015112830366
     let findings = detect("card: 4532015112830366");
-    assert!(has_pii(&findings, PiiEntityType::CreditCard), "Valid Luhn card must be detected");
+    assert!(
+        has_pii(&findings, PiiEntityType::CreditCard),
+        "Valid Luhn card must be detected"
+    );
 }
 
 #[test]
 fn test_credit_card_luhn_invalid_not_matched() {
     // Invalid Luhn: 4532015112830367
     let findings = detect("card: 4532015112830367");
-    assert!(!has_pii(&findings, PiiEntityType::CreditCard), "Invalid Luhn must not match");
+    assert!(
+        !has_pii(&findings, PiiEntityType::CreditCard),
+        "Invalid Luhn must not match"
+    );
 }
 
 #[test]
@@ -91,14 +111,20 @@ fn test_luhn_check_known_invalid() {
 fn test_iban_valid_matched() {
     // GB82 WEST 1234 5698 7654 32 — valid mod-97
     let findings = detect("IBAN: GB82WEST12345698765432");
-    assert!(has_pii(&findings, PiiEntityType::IbanCode), "Valid IBAN must be detected");
+    assert!(
+        has_pii(&findings, PiiEntityType::IbanCode),
+        "Valid IBAN must be detected"
+    );
 }
 
 #[test]
 fn test_iban_invalid_checksum_not_matched() {
     // GB82 with wrong check digits
     let findings = detect("IBAN: GB99WEST12345698765432");
-    assert!(!has_pii(&findings, PiiEntityType::IbanCode), "Invalid IBAN checksum must not match");
+    assert!(
+        !has_pii(&findings, PiiEntityType::IbanCode),
+        "Invalid IBAN checksum must not match"
+    );
 }
 
 #[test]
@@ -140,8 +166,10 @@ fn test_ip_v6_matched() {
 fn test_aws_access_key_matched() {
     let findings = detect("key = AKIAIOSFODNN7EXAMPLE");
     assert!(
-        findings.iter().any(|f| f.finding_type == FindingType::SecretExposure
-            && f.pii_entity == Some(PiiEntityType::AwsAccessKey)),
+        findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::SecretExposure
+                && f.pii_entity == Some(PiiEntityType::AwsAccessKey)),
         "AWS access key must be detected"
     );
 }
@@ -150,7 +178,9 @@ fn test_aws_access_key_matched() {
 fn test_github_token_matched() {
     let findings = detect("auth: ghp_1234567890123456789012345678901234567890");
     assert!(
-        findings.iter().any(|f| f.pii_entity == Some(PiiEntityType::GithubToken)),
+        findings
+            .iter()
+            .any(|f| f.pii_entity == Some(PiiEntityType::GithubToken)),
         "GitHub token must be detected"
     );
 }
@@ -159,7 +189,9 @@ fn test_github_token_matched() {
 fn test_private_key_matched() {
     let findings = detect("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAK...");
     assert!(
-        findings.iter().any(|f| f.pii_entity == Some(PiiEntityType::PrivateKey)),
+        findings
+            .iter()
+            .any(|f| f.pii_entity == Some(PiiEntityType::PrivateKey)),
         "PEM private key must be detected"
     );
 }
@@ -168,7 +200,9 @@ fn test_private_key_matched() {
 fn test_jwt_matched() {
     let findings = detect("token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.abc123def456ghi");
     assert!(
-        findings.iter().any(|f| f.pii_entity == Some(PiiEntityType::JwtToken)),
+        findings
+            .iter()
+            .any(|f| f.pii_entity == Some(PiiEntityType::JwtToken)),
         "JWT must be detected"
     );
 }

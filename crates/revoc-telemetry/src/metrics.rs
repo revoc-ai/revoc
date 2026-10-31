@@ -11,14 +11,17 @@ use prometheus::{CounterVec, Encoder, HistogramVec, IntCounter, Opts, Registry, 
 use revoc_core::RevocError;
 
 // ── Request duration buckets (ms) ─────────────────────────────────────────────
-const REQUEST_BUCKETS: &[f64] = &[1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0];
+const REQUEST_BUCKETS: &[f64] = &[
+    1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0,
+];
 
 // ── Detection stage duration buckets (ms) ─────────────────────────────────────
 const DETECTION_BUCKETS: &[f64] = &[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0];
 
 // ── Upstream duration buckets (ms) ────────────────────────────────────────────
-const UPSTREAM_BUCKETS: &[f64] =
-    &[10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0];
+const UPSTREAM_BUCKETS: &[f64] = &[
+    10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
+];
 
 // ── Global registry + metrics ─────────────────────────────────────────────────
 
@@ -28,7 +31,9 @@ static GLOBAL_REGISTRY: LazyLock<Registry> = LazyLock::new(Registry::new);
 // under our control, so registration cannot fail at runtime.
 static GLOBAL_METRICS: LazyLock<RevocMetrics> = LazyLock::new(|| {
     RevocMetrics::new(&GLOBAL_REGISTRY).unwrap_or_else(|e| {
-        eprintln!("FATAL: GLOBAL_METRICS init failed — metric definitions are static constants: {e}");
+        eprintln!(
+            "FATAL: GLOBAL_METRICS init failed — metric definitions are static constants: {e}"
+        );
         std::process::exit(1)
     })
 });
@@ -59,17 +64,13 @@ fn make_histogram_vec(
     let opts = prometheus::HistogramOpts::new(name, help).buckets(buckets);
     let m = HistogramVec::new(opts, labels)
         .map_err(|e| RevocError::Configuration(format!("Histogram '{name}' create error: {e}")))?;
-    registry
-        .register(Box::new(m.clone()))
-        .map_err(|e| RevocError::Configuration(format!("Histogram '{name}' register error: {e}")))?;
+    registry.register(Box::new(m.clone())).map_err(|e| {
+        RevocError::Configuration(format!("Histogram '{name}' register error: {e}"))
+    })?;
     Ok(m)
 }
 
-fn make_int_counter(
-    registry: &Registry,
-    name: &str,
-    help: &str,
-) -> Result<IntCounter, RevocError> {
+fn make_int_counter(registry: &Registry, name: &str, help: &str) -> Result<IntCounter, RevocError> {
     let m = IntCounter::new(name, help)
         .map_err(|e| RevocError::Configuration(format!("Counter '{name}' create error: {e}")))?;
     registry
@@ -86,7 +87,6 @@ fn make_int_counter(
 #[derive(Debug)]
 pub struct RevocMetrics {
     // ── Request counters ──────────────────────────────────────────────────────
-
     /// Total requests processed, labelled by outcome.
     pub revoc_requests_total: CounterVec,
 
@@ -94,7 +94,6 @@ pub struct RevocMetrics {
     pub revoc_request_duration_ms: HistogramVec,
 
     // ── Detection stage metrics ───────────────────────────────────────────────
-
     /// Latency of each detection stage (regex, ONNX, plugin, etc.) in ms.
     pub revoc_detection_stage_ms: HistogramVec,
 
@@ -102,12 +101,10 @@ pub struct RevocMetrics {
     pub revoc_findings_total: CounterVec,
 
     // ── Policy metrics ────────────────────────────────────────────────────────
-
     /// Policy decisions emitted by the engine.
     pub revoc_policy_decisions_total: CounterVec,
 
     // ── Upstream metrics ──────────────────────────────────────────────────────
-
     /// Upstream provider round-trip latency in milliseconds.
     pub revoc_upstream_duration_ms: HistogramVec,
 
@@ -115,12 +112,10 @@ pub struct RevocMetrics {
     pub revoc_upstream_errors_total: CounterVec,
 
     // ── MCP metrics ───────────────────────────────────────────────────────────
-
     /// MCP tool calls governed.
     pub revoc_mcp_calls_total: CounterVec,
 
     // ── Token / cost metrics ──────────────────────────────────────────────────
-
     /// Cumulative tokens consumed per caller / model.
     pub revoc_tokens_used_total: CounterVec,
 
@@ -128,7 +123,6 @@ pub struct RevocMetrics {
     pub revoc_estimated_cost_usd: CounterVec,
 
     // ── Cache metrics ─────────────────────────────────────────────────────────
-
     /// Policy decision cache hits.
     pub revoc_cache_hits_total: CounterVec,
 
@@ -136,7 +130,6 @@ pub struct RevocMetrics {
     pub revoc_cache_misses_total: CounterVec,
 
     // ── Security invariant metrics (D8/D9/D10/D11/D12) ───────────────────────
-
     /// Kill-switch activations, labelled by scope (global/org/caller). [D11]
     pub revoc_kill_switch_activations_total: CounterVec,
 
@@ -167,7 +160,13 @@ impl RevocMetrics {
                 registry,
                 "revoc_requests_total",
                 "Total requests processed by the REVOC proxy",
-                &["environment", "provider", "decision", "caller_team", "org_id"],
+                &[
+                    "environment",
+                    "provider",
+                    "decision",
+                    "caller_team",
+                    "org_id",
+                ],
             )?,
             revoc_request_duration_ms: make_histogram_vec(
                 registry,

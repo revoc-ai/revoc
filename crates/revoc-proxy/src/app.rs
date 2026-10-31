@@ -14,21 +14,20 @@ use tower_http::trace::TraceLayer;
 
 use revoc_config::Config;
 use revoc_core::{RevocError, SessionState};
+use revoc_dashboard::LiveFeedBus;
 use revoc_dashboard::{
-    AuditEvent, AuditStore, AnalyticsResult, AnalyticsWindow, CallerCount, EventFilter,
-    RuleCount, ServiceCost, TimelinePoint,
+    AnalyticsResult, AnalyticsWindow, AuditEvent, AuditStore, CallerCount, EventFilter, RuleCount,
+    ServiceCost, TimelinePoint,
 };
 use revoc_pipeline::Pipeline;
 use revoc_policy::RevocPolicyEngine;
 use revoc_redaction::RevocRedactor;
-use revoc_dashboard::LiveFeedBus;
 use revoc_telemetry::RevocMetrics;
 
 use crate::{
-    upstream::retry::with_retry,
     handlers::{
-        emergency::{activate_handler, deactivate_handler, status_handler},
         embeddings::embeddings_handler,
+        emergency::{activate_handler, deactivate_handler, status_handler},
         health::{health_handler, metrics_handler, ready_handler, reload_handler, startup_handler},
         llm::{chat_completions_handler, completions_handler},
         mcp::mcp_handler,
@@ -41,6 +40,7 @@ use crate::{
         request_id::request_id_middleware,
         security::security_middleware,
     },
+    upstream::retry::with_retry,
     upstream::{client::UpstreamClient, router::UpstreamRouter},
 };
 
@@ -74,7 +74,10 @@ pub struct InMemorySessionStore {
 impl InMemorySessionStore {
     /// Create a new in-memory store with the given TTL.
     pub fn new(ttl: Duration) -> Self {
-        Self { store: DashMap::new(), ttl }
+        Self {
+            store: DashMap::new(),
+            ttl,
+        }
     }
 }
 
@@ -91,8 +94,14 @@ impl SessionStore for InMemorySessionStore {
         None
     }
 
-    async fn set(&self, session_id: &str, state: SessionState, _ttl_secs: u64) -> Result<(), RevocError> {
-        self.store.insert(session_id.to_owned(), (state, std::time::Instant::now()));
+    async fn set(
+        &self,
+        session_id: &str,
+        state: SessionState,
+        _ttl_secs: u64,
+    ) -> Result<(), RevocError> {
+        self.store
+            .insert(session_id.to_owned(), (state, std::time::Instant::now()));
         Ok(())
     }
 
@@ -142,6 +151,7 @@ impl SqliteAuditStore {
 }
 
 #[async_trait]
+#[allow(clippy::too_many_lines)] // insert_event binds every audit column
 impl AuditStore for SqliteAuditStore {
     async fn insert_event(&self, event: AuditEvent) -> Result<(), RevocError> {
         sqlx::query(
@@ -151,7 +161,7 @@ impl AuditStore for SqliteAuditStore {
               model, provider, tool_name, request_type, governance_depth, prompt_tokens,
               completion_tokens, estimated_cost_usd, duration_ms, detection_ms, policy_ms,
               was_normalized, manifest_warnings, trace_id, policy_engine, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(&event.id)
         .bind(&event.org_id)
@@ -258,7 +268,8 @@ impl AuditStore for SqliteAuditStore {
         .await
         .map_err(db_err)?;
 
-        let mut rule_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        let mut rule_counts: std::collections::HashMap<String, u64> =
+            std::collections::HashMap::new();
         for (rules,) in &rule_lists {
             if let Some(rules) = rules {
                 for r in rules.split(',') {
@@ -273,7 +284,11 @@ impl AuditStore for SqliteAuditStore {
             .into_iter()
             .map(|(rule_id, count)| RuleCount { rule_id, count })
             .collect();
-        top_rules.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.rule_id.cmp(&b.rule_id)));
+        top_rules.sort_by(|a, b| {
+            b.count
+                .cmp(&a.count)
+                .then_with(|| a.rule_id.cmp(&b.rule_id))
+        });
         top_rules.truncate(10);
 
         // ── Top callers by event volume ───────────────────────────────────
@@ -288,7 +303,10 @@ impl AuditStore for SqliteAuditStore {
         .map_err(db_err)?;
         let top_callers = caller_rows
             .into_iter()
-            .map(|(caller_id, count)| CallerCount { caller_id, count: count.unsigned_abs() })
+            .map(|(caller_id, count)| CallerCount {
+                caller_id,
+                count: count.unsigned_abs(),
+            })
             .collect();
 
         // ── Estimated cost by service (provider, falling back to tool name) ─
@@ -344,13 +362,11 @@ impl AuditStore for SqliteAuditStore {
     }
 
     async fn cleanup_old_events(&self, retention_days: u32) -> Result<u64, RevocError> {
-        let res = sqlx::query(
-            "DELETE FROM audit_events WHERE created_at < datetime('now', ?)"
-        )
-        .bind(format!("-{retention_days} days"))
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RevocError::Database(e.to_string()))?;
+        let res = sqlx::query("DELETE FROM audit_events WHERE created_at < datetime('now', ?)")
+            .bind(format!("-{retention_days} days"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RevocError::Database(e.to_string()))?;
         Ok(res.rows_affected())
     }
 }
@@ -367,7 +383,7 @@ impl KillSwitchLogWriter for SqliteAuditStore {
     ) -> Result<(), RevocError> {
         sqlx::query(
             "INSERT INTO kill_switch_log (id, scope, scope_value, action, activated_by, reason)
-             VALUES (?,?,?,?,?,?)"
+             VALUES (?,?,?,?,?,?)",
         )
         .bind(uuid::Uuid::now_v7().to_string())
         .bind(scope)
@@ -484,9 +500,9 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
     let kill_switch_log: Arc<dyn KillSwitchLogWriter + Send + Sync> = sqlite_store;
 
     // Session store
-    let session_store: Arc<dyn SessionStore + Send + Sync> = Arc::new(
-        InMemorySessionStore::new(Duration::from_secs(cfg.session.ttl_secs))
-    );
+    let session_store: Arc<dyn SessionStore + Send + Sync> = Arc::new(InMemorySessionStore::new(
+        Duration::from_secs(cfg.session.ttl_secs),
+    ));
 
     // Rate limiter (max 50 concurrent requests per caller)
     let rate_limiter = RateLimiter::new(50);
@@ -536,16 +552,22 @@ pub fn build_routers(state: &AppState) -> AppRouters {
     // `/metrics` are ALWAYS reachable (SPEC.md §9 D11 / §16).
     let governed = Router::new()
         .route("/v1/chat/completions", post(chat_completions_handler))
-        .route("/v1/completions",      post(completions_handler))
-        .route("/v1/embeddings",       post(embeddings_handler))
-        .route("/mcp",                 post(mcp_handler))
+        .route("/v1/completions", post(completions_handler))
+        .route("/v1/embeddings", post(embeddings_handler))
+        .route("/mcp", post(mcp_handler))
         .with_state(state.clone())
-        .layer(middleware::from_fn_with_state(state.clone(), rate_limit_middleware))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     let probes = Router::new()
-        .route("/health",  get(health_handler))
-        .route("/ready",   get(ready_handler).with_state(state.clone()))
+        .route("/health", get(health_handler))
+        .route("/ready", get(ready_handler).with_state(state.clone()))
         .route("/startup", get(startup_handler))
         .route("/metrics", get(metrics_handler))
         .with_state(state.clone());
@@ -556,16 +578,28 @@ pub fn build_routers(state: &AppState) -> AppRouters {
         // — applied uniformly to both governed and probe routes. Auth + RateLimit
         // are scoped to the governed sub-router only (see above).
         .layer(middleware::from_fn(security_middleware))
-        .layer(middleware::from_fn_with_state(state.clone(), metrics_recorder_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            metrics_recorder_middleware,
+        ))
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(request_id_middleware));
 
     // ── Internal admin router (127.0.0.1:8081 ONLY) ──────────────────────────
     let internal = Router::new()
-        .route("/internal/reload",                             post(reload_handler))
-        .route("/internal/emergency/kill-switch/activate",    post(activate_handler))
-        .route("/internal/emergency/kill-switch/deactivate",  post(deactivate_handler))
-        .route("/internal/emergency/kill-switch/status",      get(status_handler))
+        .route("/internal/reload", post(reload_handler))
+        .route(
+            "/internal/emergency/kill-switch/activate",
+            post(activate_handler),
+        )
+        .route(
+            "/internal/emergency/kill-switch/deactivate",
+            post(deactivate_handler),
+        )
+        .route(
+            "/internal/emergency/kill-switch/status",
+            get(status_handler),
+        )
         .with_state(state.clone());
 
     // ── Dashboard router ─────────────────────────────────────────────────────
@@ -594,5 +628,9 @@ pub fn build_routers(state: &AppState) -> AppRouters {
         None
     };
 
-    AppRouters { main, internal, dashboard: dashboard_router }
+    AppRouters {
+        main,
+        internal,
+        dashboard: dashboard_router,
+    }
 }

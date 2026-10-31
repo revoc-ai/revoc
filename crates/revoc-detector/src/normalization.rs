@@ -93,10 +93,9 @@ pub fn normalize(text: &str) -> NormalizedText {
         if !c.is_control() || matches!(c, '\n' | '\r' | '\t') {
             s4_chars.push(c);
         } else {
-            let prev_is_word = i > 0
-                && (chars4[i - 1].is_alphanumeric() || chars4[i - 1] == '_');
-            let next_is_word = i + 1 < chars4.len()
-                && (chars4[i + 1].is_alphanumeric() || chars4[i + 1] == '_');
+            let prev_is_word = i > 0 && (chars4[i - 1].is_alphanumeric() || chars4[i - 1] == '_');
+            let next_is_word =
+                i + 1 < chars4.len() && (chars4[i + 1].is_alphanumeric() || chars4[i + 1] == '_');
             if prev_is_word && next_is_word {
                 s4_chars.push(' ');
             }

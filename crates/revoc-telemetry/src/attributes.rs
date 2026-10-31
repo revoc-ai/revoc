@@ -113,15 +113,18 @@ pub fn governance_attrs(decision: &PolicyDecision, input: &PolicyInput) -> Vec<K
         .collect();
 
     let mut attrs = vec![
-        KeyValue::new(REVOC_REQUEST_ID,       input.request_id.clone()),
-        KeyValue::new(REVOC_DECISION,         format!("{:?}", decision.effective_action)),
-        KeyValue::new(REVOC_FINDINGS_COUNT,   i64::try_from(input.findings.len()).unwrap_or(i64::MAX)),
-        KeyValue::new(REVOC_VIOLATED_RULES,   rules),
-        KeyValue::new(REVOC_PII_TYPES,        pii_types.join(",")),
-        KeyValue::new(REVOC_CALLER_ID,        input.caller.caller_id.clone()),
-        KeyValue::new(REVOC_CALLER_ORG,       input.caller.org_id.clone()),
+        KeyValue::new(REVOC_REQUEST_ID, input.request_id.clone()),
+        KeyValue::new(REVOC_DECISION, format!("{:?}", decision.effective_action)),
+        KeyValue::new(
+            REVOC_FINDINGS_COUNT,
+            i64::try_from(input.findings.len()).unwrap_or(i64::MAX),
+        ),
+        KeyValue::new(REVOC_VIOLATED_RULES, rules),
+        KeyValue::new(REVOC_PII_TYPES, pii_types.join(",")),
+        KeyValue::new(REVOC_CALLER_ID, input.caller.caller_id.clone()),
+        KeyValue::new(REVOC_CALLER_ORG, input.caller.org_id.clone()),
         KeyValue::new(REVOC_GOVERNANCE_DEPTH, i64::from(input.governance_depth)),
-        KeyValue::new(REVOC_POLICY_TIER,      format!("{:?}", decision.tier)),
+        KeyValue::new(REVOC_POLICY_TIER, format!("{:?}", decision.tier)),
     ];
 
     if let Some(team) = &input.caller.team {
@@ -140,11 +143,14 @@ pub fn governance_attrs(decision: &PolicyDecision, input: &PolicyInput) -> Vec<K
 /// Build span attributes for an upstream AI provider call.
 pub fn gen_ai_attrs(model: &str, provider: &str, usage: Option<&TokenUsage>) -> Vec<KeyValue> {
     let mut attrs = vec![
-        KeyValue::new(GEN_AI_SYSTEM,        provider.to_string()),
+        KeyValue::new(GEN_AI_SYSTEM, provider.to_string()),
         KeyValue::new(GEN_AI_REQUEST_MODEL, model.to_string()),
     ];
     if let Some(u) = usage {
-        attrs.push(KeyValue::new(GEN_AI_USAGE_TOTAL_TOKENS, i64::try_from(u.total_tokens).unwrap_or(i64::MAX)));
+        attrs.push(KeyValue::new(
+            GEN_AI_USAGE_TOTAL_TOKENS,
+            i64::try_from(u.total_tokens).unwrap_or(i64::MAX),
+        ));
     }
     attrs
 }
@@ -153,7 +159,7 @@ pub fn gen_ai_attrs(model: &str, provider: &str, usage: Option<&TokenUsage>) -> 
 pub fn mcp_attrs(call: &McpToolCall, blocked: bool) -> Vec<KeyValue> {
     let mut attrs = vec![
         KeyValue::new(REVOC_MCP_TOOL_NAME, call.tool_name.clone()),
-        KeyValue::new(REVOC_MCP_BLOCKED,   blocked),
+        KeyValue::new(REVOC_MCP_BLOCKED, blocked),
     ];
     if let Some(sid) = &call.server_id {
         attrs.push(KeyValue::new(REVOC_MCP_SERVER_ID, sid.clone()));
@@ -173,8 +179,8 @@ pub fn timing_attrs(
 ) -> Vec<KeyValue> {
     vec![
         KeyValue::new(REVOC_TIMING_DETECTION_MS, detection_ms),
-        KeyValue::new(REVOC_TIMING_POLICY_MS,    policy_ms),
+        KeyValue::new(REVOC_TIMING_POLICY_MS, policy_ms),
         KeyValue::new(REVOC_TIMING_REDACTION_MS, redaction_ms),
-        KeyValue::new(REVOC_TIMING_UPSTREAM_MS,  upstream_ms),
+        KeyValue::new(REVOC_TIMING_UPSTREAM_MS, upstream_ms),
     ]
 }

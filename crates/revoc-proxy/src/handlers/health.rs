@@ -22,12 +22,17 @@ pub async fn health_handler() -> Json<serde_json::Value> {
 /// `GET /ready` — checks audit-store and policy-engine reachability with real
 /// connectivity probes (a minimal `list_events` query against the configured
 /// backend, and an `engine_type()`/config check for the policy engine).
-pub async fn ready_handler(State(state): State<AppState>) -> (axum::http::StatusCode, Json<serde_json::Value>) {
+pub async fn ready_handler(
+    State(state): State<AppState>,
+) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     let mut reasons = Vec::new();
 
     // Storage connectivity — issue a minimal real query against the audit store
     // (SQLite/Postgres) so a dead connection pool is detected before traffic.
-    let filter = EventFilter { limit: Some(1), ..EventFilter::default() };
+    let filter = EventFilter {
+        limit: Some(1),
+        ..EventFilter::default()
+    };
     if let Err(e) = state.audit_store.list_events(filter).await {
         warn!(error = %e, "Readiness check: audit store unreachable");
         reasons.push("audit_store_unreachable".to_owned());

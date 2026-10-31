@@ -7,8 +7,10 @@ use revoc_core::{PiiEntityType, Severity};
 // ── Compiled patterns ──────────────────────────────────────────────────────────
 
 static AWS_ACCESS_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?:A3T[A-Z0-9]|AKIA|AGPA|AIPA|AROA|ASCA|ASIA)[A-Z0-9]{16}")
-        .unwrap_or_else(|e| { eprintln!("FATAL: AWS_ACCESS_KEY_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?:A3T[A-Z0-9]|AKIA|AGPA|AIPA|AROA|ASCA|ASIA)[A-Z0-9]{16}").unwrap_or_else(|e| {
+        eprintln!("FATAL: AWS_ACCESS_KEY_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static AWS_SECRET_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
@@ -18,38 +20,54 @@ static AWS_SECRET_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(
 });
 
 static GITHUB_TOKEN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?:ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{82})")
-        .unwrap_or_else(|e| { eprintln!("FATAL: GITHUB_TOKEN_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?:ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{82})").unwrap_or_else(|e| {
+        eprintln!("FATAL: GITHUB_TOKEN_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static OPENAI_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"sk-[a-zA-Z0-9]{48}|sk-proj-[a-zA-Z0-9_\-]{64,}")
-        .unwrap_or_else(|e| { eprintln!("FATAL: OPENAI_KEY_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"sk-[a-zA-Z0-9]{48}|sk-proj-[a-zA-Z0-9_\-]{64,}").unwrap_or_else(|e| {
+        eprintln!("FATAL: OPENAI_KEY_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static ANTHROPIC_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"sk-ant-[a-zA-Z0-9\-_]{95}")
-        .unwrap_or_else(|e| { eprintln!("FATAL: ANTHROPIC_KEY_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"sk-ant-[a-zA-Z0-9\-_]{95}").unwrap_or_else(|e| {
+        eprintln!("FATAL: ANTHROPIC_KEY_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static GENERIC_API_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?i)"(?:api[_\-]?key|apikey)"\s*:\s*"([A-Za-z0-9\-_]{20,})""#)
-        .unwrap_or_else(|e| { eprintln!("FATAL: GENERIC_API_KEY_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r#"(?i)"(?:api[_\-]?key|apikey)"\s*:\s*"([A-Za-z0-9\-_]{20,})""#).unwrap_or_else(
+        |e| {
+            eprintln!("FATAL: GENERIC_API_KEY_RE compile failed: {e}");
+            std::process::exit(1)
+        },
+    )
 });
 
 static PRIVATE_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")
-        .unwrap_or_else(|e| { eprintln!("FATAL: PRIVATE_KEY_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----").unwrap_or_else(|e| {
+        eprintln!("FATAL: PRIVATE_KEY_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static JWT_TOKEN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+")
-        .unwrap_or_else(|e| { eprintln!("FATAL: JWT_TOKEN_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap_or_else(|e| {
+        eprintln!("FATAL: JWT_TOKEN_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static PASSWORD_IN_JSON_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?i)"(?:password|passwd|secret)"\s*:\s*"([^"]{6,})""#)
-        .unwrap_or_else(|e| { eprintln!("FATAL: PASSWORD_IN_JSON_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r#"(?i)"(?:password|passwd|secret)"\s*:\s*"([^"]{6,})""#).unwrap_or_else(|e| {
+        eprintln!("FATAL: PASSWORD_IN_JSON_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 // ── Pattern catalogue ──────────────────────────────────────────────────────────

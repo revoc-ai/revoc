@@ -1,0 +1,22 @@
+# gitleaks configuration — extends the default ruleset.
+#
+# REVOC is a secret-detection product, so its tests and docs contain
+# intentionally fake credentials (AWS's documented example key, dummy
+# ghp_/JWT tokens, the `dev-admin-key` local placeholder). They are
+# allowlisted here; anything outside these paths is still scanned.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional fake credentials in tests, fixtures and documentation"
+paths = [
+  '''(^|/)tests/''',
+  '''(^|/)crates/[^/]+/src/tests/''',
+  '''(^|/)docs/docs/''',
+  '''(^|/)examples/''',
+]
+regexes = [
+  '''dev-admin-key''',
+  '''AKIAIOSFODNN7EXAMPLE''',
+]

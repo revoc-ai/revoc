@@ -8,7 +8,9 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 use crate::error::RevocError;
-use crate::types::decision::{CallerContext, PolicyDecision, PolicyEngineMode, PolicyInput, RequestType};
+use crate::types::decision::{
+    CallerContext, PolicyDecision, PolicyEngineMode, PolicyInput, RequestType,
+};
 use crate::types::finding::{DetectionTier, Finding};
 use crate::types::mcp::McpToolCall;
 

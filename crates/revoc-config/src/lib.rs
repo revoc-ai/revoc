@@ -12,7 +12,7 @@ pub mod schema;
 
 pub use schema::{
     AuditConfig, AuthConfig, CacheConfig, Config, DashboardConfig, DetectionConfig,
-    GovernanceConfig, HttpPluginConfig, KillSwitchConfig, McpConfig, PolicyConfig,
-    ProviderConfig, ServerConfig, SessionConfig, StorageConfig, StreamConfig, TelemetryConfig,
-    TrustedMcpServer, UpstreamConfig, WebhookEndpoint, WebhooksConfig,
+    GovernanceConfig, HttpPluginConfig, KillSwitchConfig, McpConfig, PolicyConfig, ProviderConfig,
+    ServerConfig, SessionConfig, StorageConfig, StreamConfig, TelemetryConfig, TrustedMcpServer,
+    UpstreamConfig, WebhookEndpoint, WebhooksConfig,
 };

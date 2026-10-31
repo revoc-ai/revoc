@@ -7,13 +7,17 @@ use revoc_core::{PiiEntityType, Severity};
 // ── Compiled patterns ──────────────────────────────────────────────────────────
 
 static SSN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"\b(?!000|666|9\d{2})\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: SSN_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b(?!000|666|9\d{2})\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: SSN_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static EMAIL_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: EMAIL_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: EMAIL_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static PHONE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
@@ -45,15 +49,18 @@ static CREDIT_CARD_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| 
 });
 
 static IBAN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"\b[A-Z]{2}\d{2}[A-Z0-9]{1,30}\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: IBAN_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b[A-Z]{2}\d{2}[A-Z0-9]{1,30}\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: IBAN_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static IPV4_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(
-        r"\b(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3}\b",
-    )
-    .unwrap_or_else(|e| { eprintln!("FATAL: IPV4_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3}\b")
+        .unwrap_or_else(|e| {
+            eprintln!("FATAL: IPV4_RE compile failed: {e}");
+            std::process::exit(1)
+        })
 });
 
 static IPV6_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
@@ -65,13 +72,19 @@ static IPV6_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
 });
 
 static US_PASSPORT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"\b[A-Z]\d{8}\b").unwrap_or_else(|e| { eprintln!("FATAL: US_PASSPORT_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b[A-Z]\d{8}\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: US_PASSPORT_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static US_DL_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Generic driver's license near keyword context
     Regex::new(r"(?i)\b(?:DL|D\.L\.|driver[\s_]?licen[sc]e)\s*[:#]?\s*([A-Z0-9]{5,20})\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: US_DL_RE compile failed: {e}"); std::process::exit(1) })
+        .unwrap_or_else(|e| {
+            eprintln!("FATAL: US_DL_RE compile failed: {e}");
+            std::process::exit(1)
+        })
 });
 
 static DOB_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
@@ -80,18 +93,27 @@ static DOB_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
 });
 
 static MRN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:mrn|medical[\s_]record)\s*[:#]?\s*([A-Z0-9\-]{5,20})\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: MRN_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?i)\b(?:mrn|medical[\s_]record)\s*[:#]?\s*([A-Z0-9\-]{5,20})\b").unwrap_or_else(
+        |e| {
+            eprintln!("FATAL: MRN_RE compile failed: {e}");
+            std::process::exit(1)
+        },
+    )
 });
 
 static NPI_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:npi|national[\s_]provider)\s*[:#]?\s*(\d{10})\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: NPI_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?i)\b(?:npi|national[\s_]provider)\s*[:#]?\s*(\d{10})\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: NPI_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static DEA_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // DEA format: 2 alpha chars + 7 digits
-    Regex::new(r"\b[A-Z]{2}\d{7}\b").unwrap_or_else(|e| { eprintln!("FATAL: DEA_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b[A-Z]{2}\d{7}\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: DEA_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 // ── Validators ─────────────────────────────────────────────────────────────────
@@ -115,7 +137,11 @@ pub fn luhn_check(s: &str) -> bool {
         .map(|(i, &d)| {
             if i % 2 == 1 {
                 let doubled = d * 2;
-                if doubled > 9 { doubled - 9 } else { doubled }
+                if doubled > 9 {
+                    doubled - 9
+                } else {
+                    doubled
+                }
             } else {
                 d
             }

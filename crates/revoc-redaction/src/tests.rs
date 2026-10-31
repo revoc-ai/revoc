@@ -6,15 +6,15 @@ use crate::json_mutator::{apply_span_redactions, SpanReplacement};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn pii_finding_with_span(
-    entity: PiiEntityType,
-    field: &str,
-    start: usize,
-    end: usize,
-) -> Finding {
-    let mut f = Finding::new(FindingType::Pii, Severity::High, DetectionTier::Regex)
-        .with_pii(entity);
-    f.span = Some(TextSpan { start, end, field: field.into(), value: None });
+fn pii_finding_with_span(entity: PiiEntityType, field: &str, start: usize, end: usize) -> Finding {
+    let mut f =
+        Finding::new(FindingType::Pii, Severity::High, DetectionTier::Regex).with_pii(entity);
+    f.span = Some(TextSpan {
+        start,
+        end,
+        field: field.into(),
+        value: None,
+    });
     f
 }
 
@@ -45,7 +45,10 @@ fn test_apply_span_replaces_email_in_content() {
     let result = apply_span_redactions(body, &replacements).unwrap();
     let s = std::str::from_utf8(&result).unwrap();
     assert!(!s.contains("foo@bar.com"), "Original email must not appear");
-    assert!(s.contains("[REDACTED-EMAIL_ADDRESS]"), "Replacement must appear");
+    assert!(
+        s.contains("[REDACTED-EMAIL_ADDRESS]"),
+        "Replacement must appear"
+    );
 }
 
 #[test]
@@ -98,7 +101,11 @@ fn test_apply_span_missing_field_silently_skips() {
     let body = br#"{"messages":[{"role":"user","content":"hello"}]}"#;
     let replacements = vec![(
         "messages[99].content".to_string(),
-        vec![SpanReplacement { start: 0, end: 5, replacement: "X".to_string() }],
+        vec![SpanReplacement {
+            start: 0,
+            end: 5,
+            replacement: "X".to_string(),
+        }],
     )];
     let result = apply_span_redactions(body, &replacements).unwrap();
     assert_eq!(
@@ -112,7 +119,11 @@ fn test_apply_span_invalid_json_returns_error() {
     let not_json = b"not json at all";
     let replacements = vec![(
         "messages[0].content".to_string(),
-        vec![SpanReplacement { start: 0, end: 1, replacement: "X".to_string() }],
+        vec![SpanReplacement {
+            start: 0,
+            end: 1,
+            replacement: "X".to_string(),
+        }],
     )];
     assert!(apply_span_redactions(not_json, &replacements).is_err());
 }
@@ -125,9 +136,7 @@ fn test_apply_span_hash_replacement() {
     let digest = sha2::Sha256::digest(secret.as_bytes());
     let expected_hash = format!("[hash:{}]", hex::encode(&digest[..4]));
 
-    let body_str = format!(
-        r#"{{"messages":[{{"role":"user","content":"key: {secret}"}}]}}"#
-    );
+    let body_str = format!(r#"{{"messages":[{{"role":"user","content":"key: {secret}"}}]}}"#);
     let start = 5; // "key: " is 5 bytes, secret starts at 5
     let replacements = vec![(
         "messages[0].content".to_string(),
@@ -152,9 +161,7 @@ fn test_redact_body_no_findings_returns_original() {
     let metrics = revoc_telemetry::RevocMetrics::global();
     let redactor = crate::RevocRedactor::new(metrics);
     let body = br#"{"messages":[{"role":"user","content":"Hello world"}]}"#;
-    let (out, _findings) = redactor
-        .redact_body(body, &[], &redact_decision())
-        .unwrap();
+    let (out, _findings) = redactor.redact_body(body, &[], &redact_decision()).unwrap();
     assert_eq!(out, body.to_vec());
 }
 
@@ -175,7 +182,10 @@ fn test_redact_body_allow_decision_skips_redaction() {
     let s = std::str::from_utf8(&out).unwrap();
     // High severity SSN must be redacted even under Allow decision
     // (redact_impl filter: decision.requires_redaction() || f.is_high_severity())
-    assert!(!s.contains("123-45-6789"), "High-severity SSN must be redacted regardless of decision");
+    assert!(
+        !s.contains("123-45-6789"),
+        "High-severity SSN must be redacted regardless of decision"
+    );
     assert!(applied.iter().any(|f| f.redaction_applied));
 }
 
@@ -186,8 +196,11 @@ fn test_redact_body_tool_manifest_risk_skipped() {
     let metrics = revoc_telemetry::RevocMetrics::global();
     let redactor = crate::RevocRedactor::new(metrics);
     let body = br#"{"messages":[{"role":"user","content":"tool manifest risk test"}]}"#;
-    let mut finding =
-        Finding::new(FindingType::ToolManifestRisk, Severity::High, DetectionTier::Regex);
+    let mut finding = Finding::new(
+        FindingType::ToolManifestRisk,
+        Severity::High,
+        DetectionTier::Regex,
+    );
     finding.span = Some(TextSpan {
         start: 0,
         end: 4,
@@ -198,7 +211,11 @@ fn test_redact_body_tool_manifest_risk_skipped() {
         .redact_body(body, &[finding], &redact_decision())
         .unwrap();
     // ToolManifestRisk findings must be skipped by the redactor
-    assert_eq!(out, body.to_vec(), "ToolManifestRisk must not trigger body mutation");
+    assert_eq!(
+        out,
+        body.to_vec(),
+        "ToolManifestRisk must not trigger body mutation"
+    );
 }
 
 // ── redact_mcp_result tests ───────────────────────────────────────────────────
@@ -216,7 +233,10 @@ fn test_redact_mcp_result_pii_removed() {
         .redact_mcp_result(result_json, &[finding], &redact_decision())
         .unwrap();
     let s = std::str::from_utf8(&out).unwrap();
-    assert!(!s.contains("123-45-6789"), "SSN must be removed from MCP result");
+    assert!(
+        !s.contains("123-45-6789"),
+        "SSN must be removed from MCP result"
+    );
 }
 
 #[test]

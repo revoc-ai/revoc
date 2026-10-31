@@ -15,12 +15,16 @@
 
 use async_trait::async_trait;
 
-use revoc_core::{
-    DetectionStage, DetectionTier, Finding, InspectionInput, RevocError,
-};
 #[cfg(feature = "onnx")]
-use revoc_core::PiiEntityType;
+use revoc_core::{FindingType, PiiEntityType, Severity, TextSpan};
+#[cfg(feature = "onnx")]
+use tracing::warn;
 
+#[cfg(feature = "onnx")]
+use crate::normalization::normalize;
+#[cfg(feature = "onnx")]
+use crate::regex_detector::extract_all_text_fields;
+use revoc_core::{DetectionStage, DetectionTier, Finding, InspectionInput, RevocError};
 
 // ── WordPiece tokenizer ───────────────────────────────────────────────────────
 
@@ -62,10 +66,12 @@ impl WordPieceTokenizer {
     /// Returns `Err` if the file cannot be read, parsed, or does not contain
     /// a `model.vocab` object (the standard location for `WordPiece` vocabularies).
     pub fn from_file(path: &str) -> Result<Self, RevocError> {
-        let raw = std::fs::read_to_string(path)
-            .map_err(|e| RevocError::OnnxModel(format!("Failed to read tokenizer file '{path}': {e}")))?;
-        let json: serde_json::Value = serde_json::from_str(&raw)
-            .map_err(|e| RevocError::OnnxModel(format!("Failed to parse tokenizer JSON '{path}': {e}")))?;
+        let raw = std::fs::read_to_string(path).map_err(|e| {
+            RevocError::OnnxModel(format!("Failed to read tokenizer file '{path}': {e}"))
+        })?;
+        let json: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+            RevocError::OnnxModel(format!("Failed to parse tokenizer JSON '{path}': {e}"))
+        })?;
 
         let vocab_obj = json
             .pointer("/model/vocab")
@@ -126,7 +132,12 @@ impl WordPieceTokenizer {
         let mut out = Vec::new();
 
         if let Some(id) = self.token_id(&self.cls_token) {
-            out.push(TokenSpan { token_id: id, start: 0, end: 0, is_word_start: false });
+            out.push(TokenSpan {
+                token_id: id,
+                start: 0,
+                end: 0,
+                is_word_start: false,
+            });
         }
 
         for (word_start, word) in split_words(text) {
@@ -135,7 +146,12 @@ impl WordPieceTokenizer {
 
         if let Some(id) = self.token_id(&self.sep_token) {
             let end = text.len();
-            out.push(TokenSpan { token_id: id, start: end, end, is_word_start: false });
+            out.push(TokenSpan {
+                token_id: id,
+                start: end,
+                end,
+                is_word_start: false,
+            });
         }
 
         out
@@ -219,7 +235,9 @@ fn split_words(text: &str) -> Vec<(usize, &str)> {
 
     while i < bytes.len() {
         // Find the char at byte offset i.
-        let Some(ch) = text[i..].chars().next() else { break; };
+        let Some(ch) = text[i..].chars().next() else {
+            break;
+        };
         let ch_len = ch.len_utf8();
 
         if ch.is_whitespace() {
@@ -234,7 +252,9 @@ fn split_words(text: &str) -> Vec<(usize, &str)> {
 
         let start = i;
         while i < bytes.len() {
-            let Some(c) = text[i..].chars().next() else { break; };
+            let Some(c) = text[i..].chars().next() else {
+                break;
+            };
             if c.is_whitespace() || c.is_ascii_punctuation() {
                 break;
             }
@@ -254,8 +274,13 @@ fn split_words(text: &str) -> Vec<(usize, &str)> {
 /// successfully — gates [`OnnxDetector::detect`] onto the real inference path.
 #[cfg(feature = "onnx")]
 struct LoadedModel {
-    session: ort::session::Session,
+    /// `Session::run` takes `&mut self`; the mutex lets the shared detector
+    /// run inference from concurrent requests.
+    session: std::sync::Mutex<ort::session::Session>,
     id2label: Vec<String>,
+    /// The ONNX Runtime environment the session was created in, kept alive
+    /// for the session's lifetime.
+    _environment: ort::environment::Environment,
 }
 
 #[cfg(feature = "onnx")]
@@ -342,7 +367,7 @@ impl OnnxDetector {
 
     /// Load the ONNX model via the `ort` runtime and read its `id2label`
     /// mapping from the model's metadata (`id2label` custom metadata key,
-    /// the standard location HuggingFace `optimum` exporters embed it).
+    /// the standard location `HuggingFace` `optimum` exporters embed it).
     ///
     /// Falls back to the canonical CoNLL-2003 BIO label set when no
     /// `id2label` metadata is present — this is the label set the
@@ -355,14 +380,22 @@ impl OnnxDetector {
         use ort::session::builder::GraphOptimizationLevel;
         use ort::session::Session;
 
-        let session = Session::builder()
+        let environment = ort::init().build().map_err(|e| {
+            RevocError::OnnxModel(format!(
+                "Failed to initialize ONNX Runtime environment: {e}"
+            ))
+        })?;
+
+        let session = Session::builder(&environment)
             .map_err(|e| RevocError::OnnxModel(format!("Failed to create session builder: {e}")))?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| RevocError::OnnxModel(format!("Failed to set optimization level: {e}")))?
             .with_intra_threads(1)
             .map_err(|e| RevocError::OnnxModel(format!("Failed to set thread count: {e}")))?
             .commit_from_file(model_path)
-            .map_err(|e| RevocError::OnnxModel(format!("Failed to load ONNX model '{model_path}': {e}")))?;
+            .map_err(|e| {
+                RevocError::OnnxModel(format!("Failed to load ONNX model '{model_path}': {e}"))
+            })?;
 
         let id2label = Self::read_id2label(&session).unwrap_or_else(|| {
             // Canonical CoNLL-2003 BIO label set used by `bert-base-ner`.
@@ -374,16 +407,20 @@ impl OnnxDetector {
             .collect()
         });
 
-        Ok(LoadedModel { session, id2label })
+        Ok(LoadedModel {
+            session: std::sync::Mutex::new(session),
+            id2label,
+            _environment: environment,
+        })
     }
 
     /// Parse the model's `id2label` metadata entry (a JSON object mapping
-    /// stringified integer ids to label names), as embedded by HuggingFace
+    /// stringified integer ids to label names), as embedded by `HuggingFace`
     /// `optimum.exporters.onnx`.
     #[cfg(feature = "onnx")]
     fn read_id2label(session: &ort::session::Session) -> Option<Vec<String>> {
         let meta = session.metadata().ok()?;
-        let raw = meta.custom("id2label").ok().flatten()?;
+        let raw = meta.custom("id2label")?;
         let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
         let obj = parsed.as_object()?;
 
@@ -416,7 +453,6 @@ impl OnnxDetector {
             other => PiiEntityType::Custom(format!("NER_{other}")),
         }
     }
-
 }
 
 #[async_trait]
@@ -475,8 +511,7 @@ fn infer_one(
     field: &str,
     text: &str,
 ) -> Result<Vec<Finding>, RevocError> {
-    use ndarray::Array2;
-    use ort::value::Value;
+    use ort::value::Tensor;
 
     if text.trim().is_empty() {
         return Ok(Vec::new());
@@ -493,22 +528,21 @@ fn infer_one(
     let attention_mask: Vec<i64> = vec![1; seq_len];
     let token_type_ids: Vec<i64> = vec![0; seq_len];
 
-    let input_ids_arr = Array2::from_shape_vec((1, seq_len), input_ids)
-        .map_err(|e| RevocError::OnnxModel(format!("input_ids tensor shape error: {e}")))?;
-    let attention_mask_arr = Array2::from_shape_vec((1, seq_len), attention_mask)
-        .map_err(|e| RevocError::OnnxModel(format!("attention_mask tensor shape error: {e}")))?;
-    let token_type_ids_arr = Array2::from_shape_vec((1, seq_len), token_type_ids)
-        .map_err(|e| RevocError::OnnxModel(format!("token_type_ids tensor shape error: {e}")))?;
-
-    let input_ids_value = Value::from_array(input_ids_arr)
+    let shape = [1, seq_len];
+    let input_ids_value = Tensor::from_array((shape, input_ids))
         .map_err(|e| RevocError::OnnxModel(format!("failed to build input_ids tensor: {e}")))?;
-    let attention_mask_value = Value::from_array(attention_mask_arr)
-        .map_err(|e| RevocError::OnnxModel(format!("failed to build attention_mask tensor: {e}")))?;
-    let token_type_ids_value = Value::from_array(token_type_ids_arr)
-        .map_err(|e| RevocError::OnnxModel(format!("failed to build token_type_ids tensor: {e}")))?;
+    let attention_mask_value = Tensor::from_array((shape, attention_mask)).map_err(|e| {
+        RevocError::OnnxModel(format!("failed to build attention_mask tensor: {e}"))
+    })?;
+    let token_type_ids_value = Tensor::from_array((shape, token_type_ids)).map_err(|e| {
+        RevocError::OnnxModel(format!("failed to build token_type_ids tensor: {e}"))
+    })?;
 
-    let outputs = model
+    let mut session = model
         .session
+        .lock()
+        .map_err(|_| RevocError::OnnxModel("ONNX session mutex poisoned".into()))?;
+    let outputs = session
         .run(ort::inputs![
             "input_ids" => input_ids_value,
             "attention_mask" => attention_mask_value,
@@ -518,11 +552,11 @@ fn infer_one(
 
     let logits_value = outputs
         .get("logits")
-        .or_else(|| outputs.iter().next().map(|(_, v)| v))
+        .or_else(|| outputs.iter().next().is_some().then(|| &outputs[0]))
         .ok_or_else(|| RevocError::OnnxModel("model produced no outputs".into()))?;
 
     let (shape, data) = logits_value
-        .try_extract_raw_tensor::<f32>()
+        .try_extract_tensor::<f32>()
         .map_err(|e| RevocError::OnnxModel(format!("failed to extract logits tensor: {e}")))?;
 
     // Expect shape [1, seq_len, num_labels].
@@ -579,7 +613,7 @@ fn infer_one(
 /// Decode a per-token BIO/IOB tag sequence into entity-level [`Finding`]s.
 ///
 /// Contiguous runs of `B-<TAG>` followed by zero or more `I-<TAG>` form a
-/// single entity span; continuation WordPiece sub-tokens (`is_word_start ==
+/// single entity span; continuation `WordPiece` sub-tokens (`is_word_start ==
 /// false`) are merged into their owning word's span. Confidence is the mean
 /// of the per-token softmax confidences across the run — real, computed from
 /// the model's actual output, never fabricated.
@@ -608,9 +642,7 @@ fn decode_bio_spans(
 
         while idx < tokens.len() {
             let (next_tag, next_conf) = &tags[idx];
-            let continues_entity = next_tag
-                .strip_prefix("I-")
-                .is_some_and(|t| t == entity_tag);
+            let continues_entity = next_tag.strip_prefix("I-").is_some_and(|t| t == entity_tag);
             // Continuation WordPiece sub-tokens belong to the same word —
             // always absorb them regardless of their (inherited/duplicated) tag.
             if continues_entity || !tokens[idx].is_word_start {
@@ -632,18 +664,23 @@ fn decode_bio_spans(
             continue;
         }
 
+        #[allow(clippy::cast_precision_loss)] // token counts are far below 2^52
         let confidence = confidences.iter().sum::<f64>() / confidences.len() as f64;
         let entity = OnnxDetector::entity_type_for_tag(entity_tag);
 
-        let finding = Finding::new(FindingType::Pii, severity_for_confidence(confidence), DetectionTier::Onnx)
-            .with_span(TextSpan {
-                start,
-                end,
-                field: field.to_owned(),
-                value: Some(value),
-            })
-            .with_confidence(confidence)
-            .with_pii(entity);
+        let finding = Finding::new(
+            FindingType::Pii,
+            severity_for_confidence(confidence),
+            DetectionTier::Onnx,
+        )
+        .with_span(TextSpan {
+            start,
+            end,
+            field: field.to_owned(),
+            value: Some(value),
+        })
+        .with_confidence(confidence)
+        .with_pii(entity);
 
         findings.push(finding);
     }

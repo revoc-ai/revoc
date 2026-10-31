@@ -4,8 +4,10 @@
 //! The `build.rs` script asserts all five files exist before compilation.
 
 /// Default main governance decision policy.
-pub const MAIN_REGO: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../policies/default/main.rego"));
+pub const MAIN_REGO: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../policies/default/main.rego"
+));
 
 /// LLM-specific governance violations policy.
 pub const LLM_GOVERNANCE_REGO: &str = include_str!(concat!(
@@ -26,5 +28,7 @@ pub const QUOTA_GOVERNANCE_REGO: &str = include_str!(concat!(
 ));
 
 /// Policy data document (org quotas, ACL lists, etc.).
-pub const DATA_JSON: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../policies/default/data.json"));
+pub const DATA_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../policies/default/data.json"
+));

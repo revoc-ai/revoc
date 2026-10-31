@@ -43,13 +43,13 @@ impl RevocTracer {
         opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
         if cfg.otlp_endpoint.is_empty() {
-            info!(
-                "OTel disabled. Set telemetry.otlp_endpoint to enable trace export."
-            );
+            info!("OTel disabled. Set telemetry.otlp_endpoint to enable trace export.");
             // Install a minimal provider (no exporter) so global::tracer() never panics.
             let provider = TracerProvider::builder().build();
             opentelemetry::global::set_tracer_provider(provider.clone());
-            return Ok(Self { provider: Some(provider) });
+            return Ok(Self {
+                provider: Some(provider),
+            });
         }
 
         match Self::build_otlp_provider(cfg) {
@@ -60,7 +60,9 @@ impl RevocTracer {
                     sample_rate = cfg.sample_rate,
                     "OTel OTLP exporter initialised"
                 );
-                Ok(Self { provider: Some(provider) })
+                Ok(Self {
+                    provider: Some(provider),
+                })
             }
             Err(e) => {
                 warn!(
@@ -69,7 +71,9 @@ impl RevocTracer {
                 );
                 let provider = TracerProvider::builder().build();
                 opentelemetry::global::set_tracer_provider(provider.clone());
-                Ok(Self { provider: Some(provider) })
+                Ok(Self {
+                    provider: Some(provider),
+                })
             }
         }
     }
@@ -98,11 +102,8 @@ impl RevocTracer {
                 RevocError::Configuration(format!("OTel OTLP exporter build error: {e}"))
             })?;
 
-        let processor = BatchSpanProcessor::builder(
-            exporter,
-            opentelemetry_sdk::runtime::Tokio,
-        )
-        .build();
+        let processor =
+            BatchSpanProcessor::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
 
         let sampler = if cfg.sample_rate >= 1.0 {
             Sampler::AlwaysOn

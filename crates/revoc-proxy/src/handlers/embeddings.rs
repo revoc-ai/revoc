@@ -16,8 +16,8 @@ use sha2::{Digest, Sha256};
 use tracing::warn;
 
 use revoc_core::{
-    Action, CallerContext, ChatMessage, EnforcementMode, PolicyEngine, PolicyInput, RequestType,
-    Redactor, RevocErrorResponse,
+    Action, CallerContext, ChatMessage, EnforcementMode, PolicyEngine, PolicyInput, Redactor,
+    RequestType, RevocErrorResponse,
 };
 use revoc_dashboard::GovernanceEvent;
 
@@ -177,7 +177,10 @@ pub async fn embeddings_handler(
             }
             return resp;
         }
-        Action::Redact => match state.redactor.redact_body(&body_bytes, &findings, &decision) {
+        Action::Redact => match state
+            .redactor
+            .redact_body(&body_bytes, &findings, &decision)
+        {
             Ok((redacted, _)) => redacted,
             Err(e) => {
                 warn!(error = %e, "Embeddings redaction failed");
@@ -287,7 +290,8 @@ pub async fn embeddings_handler(
 
     // ── Step 18: Forward upstream 4xx/5xx verbatim (Rule 8) ───────────────────
     if should_forward_verbatim(upstream_status) {
-        let status = StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let upstream_headers = upstream_resp.headers().clone();
         let resp_bytes = upstream_resp.bytes().await.unwrap_or_default();
         let mut resp = Response::builder()
@@ -384,7 +388,10 @@ fn deterministic_embedding(text: &str) -> Vec<f64> {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
     let digest = hasher.finalize();
-    let raw: Vec<f64> = digest.iter().map(|&b| (f64::from(b) / 127.5) - 1.0).collect();
+    let raw: Vec<f64> = digest
+        .iter()
+        .map(|&b| (f64::from(b) / 127.5) - 1.0)
+        .collect();
     let norm: f64 = raw.iter().map(|v| v * v).sum::<f64>().sqrt();
     if norm > 0.0 {
         raw.iter().map(|v| v / norm).collect()
@@ -434,9 +441,17 @@ fn record_governance(ctx: &GovernanceContext<'_>) {
         environment: Some(ctx.state.config.server.environment.clone()),
         decision: ctx.decision_str.to_owned(),
         effective_action: ctx.decision_str.to_owned(),
-        enforcement_mode: if ctx.shadow { "shadow".to_owned() } else { "enforce".to_owned() },
+        enforcement_mode: if ctx.shadow {
+            "shadow".to_owned()
+        } else {
+            "enforce".to_owned()
+        },
         violated_rules: rules_str.clone(),
-        finding_types: if finding_types.is_empty() { None } else { Some(finding_types.join(",")) },
+        finding_types: if finding_types.is_empty() {
+            None
+        } else {
+            Some(finding_types.join(","))
+        },
         model: Some(ctx.model.to_owned()),
         provider: Some(ctx.provider_name.to_owned()),
         tool_name: None,
@@ -459,7 +474,11 @@ fn record_governance(ctx: &GovernanceContext<'_>) {
     let pii_types: Vec<String> = ctx
         .findings
         .iter()
-        .filter_map(|f| f.pii_entity.as_ref().map(revoc_core::PiiEntityType::to_string))
+        .filter_map(|f| {
+            f.pii_entity
+                .as_ref()
+                .map(revoc_core::PiiEntityType::to_string)
+        })
         .collect();
     ctx.state.feed_bus.publish(GovernanceEvent {
         trace_id: ctx.trace_id.to_owned(),
@@ -479,7 +498,13 @@ fn record_governance(ctx: &GovernanceContext<'_>) {
     });
 }
 
-fn error_resp(status: u16, body: RevocErrorResponse, trace_id: &str, dash_base: &str, start: Instant) -> Response {
+fn error_resp(
+    status: u16,
+    body: RevocErrorResponse,
+    trace_id: &str,
+    dash_base: &str,
+    start: Instant,
+) -> Response {
     let total_ms = start.elapsed().as_secs_f64() * 1000.0;
     let timing = format!(
         "detection=0.0ms,policy=0.0ms,redaction=0.0ms,upstream=0.0ms,total={total_ms:.1}ms"

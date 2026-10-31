@@ -40,7 +40,10 @@ mod tests {
     fn test_metrics_new_without_error() {
         let registry = prometheus::Registry::new();
         let result = metrics::RevocMetrics::new(&registry);
-        assert!(result.is_ok(), "RevocMetrics::new should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "RevocMetrics::new should succeed: {result:?}"
+        );
     }
 
     #[test]
@@ -63,10 +66,7 @@ mod tests {
     fn test_governance_attrs_all_revoc_prefix() {
         use revoc_core::{CallerContext, PolicyDecision, PolicyInput, RequestType};
 
-        let decision = PolicyDecision::block(
-            "test block",
-            vec!["sec_ddl_mutation_v1".into()],
-        );
+        let decision = PolicyDecision::block("test block", vec!["sec_ddl_mutation_v1".into()]);
         let input = PolicyInput {
             request_id: "req-123".into(),
             request_type: RequestType::LlmRequest,
@@ -101,6 +101,10 @@ mod tests {
     #[test]
     fn test_timing_attrs_all_4_fields() {
         let attrs = attributes::timing_attrs(2.5, 1.1, 0.3, 45.0);
-        assert_eq!(attrs.len(), 4, "timing_attrs must return exactly 4 KeyValues");
+        assert_eq!(
+            attrs.len(),
+            4,
+            "timing_attrs must return exactly 4 KeyValues"
+        );
     }
 }

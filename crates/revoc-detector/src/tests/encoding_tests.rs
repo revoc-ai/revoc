@@ -18,7 +18,9 @@ fn test_base64_ssn_detected_was_encoded_true() {
     let ssn = "123-45-6789";
     let encoded = base64::engine::general_purpose::STANDARD.encode(ssn);
     let findings = detect(&encoded);
-    let f = findings.iter().find(|f| f.pii_entity == Some(PiiEntityType::UsSsn));
+    let f = findings
+        .iter()
+        .find(|f| f.pii_entity == Some(PiiEntityType::UsSsn));
     assert!(f.is_some(), "SSN in base64 must be detected");
     assert!(
         f.unwrap().was_encoded,
@@ -56,7 +58,11 @@ fn test_clean_text_only_original_target() {
     // Plain text with no base64 or % encoding → exactly one target
     let text = "Hello, world! This is plain text.";
     let targets = prepare_scan_targets(text);
-    assert_eq!(targets.len(), 1, "Plain text must produce exactly one scan target");
+    assert_eq!(
+        targets.len(),
+        1,
+        "Plain text must produce exactly one scan target"
+    );
     assert_eq!(targets[0].0, text);
     assert!(!targets[0].1, "Plain target must have was_encoded=false");
 }

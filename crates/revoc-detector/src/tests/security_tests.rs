@@ -15,7 +15,10 @@ fn has_finding(findings: &[revoc_core::Finding], t: FindingType) -> bool {
 #[test]
 fn test_drop_table_matched() {
     let findings = detect("DROP TABLE users");
-    assert!(has_finding(&findings, FindingType::DdlMutation), "DROP TABLE must fire DdlMutation");
+    assert!(
+        has_finding(&findings, FindingType::DdlMutation),
+        "DROP TABLE must fire DdlMutation"
+    );
 }
 
 #[test]
@@ -28,10 +31,16 @@ fn test_alter_table_matched() {
 fn test_alter_user_not_matched() {
     // ALTER USER is not in the DDL pattern
     let findings = detect("ALTER USER bob SET PASSWORD = 'secret'");
-    let ddl: Vec<_> = findings.iter().filter(|f| f.finding_type == FindingType::DdlMutation).collect();
+    let ddl: Vec<_> = findings
+        .iter()
+        .filter(|f| f.finding_type == FindingType::DdlMutation)
+        .collect();
     // This should NOT fire DDL (no TABLE keyword after ALTER)
     // Note: regex is `\b(DROP|TRUNCATE|ALTER)\s+TABLE\b` — requires TABLE
-    assert!(ddl.is_empty(), "ALTER USER (without TABLE) must not fire DdlMutation");
+    assert!(
+        ddl.is_empty(),
+        "ALTER USER (without TABLE) must not fire DdlMutation"
+    );
 }
 
 #[test]
@@ -59,7 +68,7 @@ fn test_delete_with_where_not_matched() {
         .iter()
         .filter(|f| {
             f.finding_type == FindingType::DdlMutation
-                // Only check the DELETE_NO_WHERE pattern (not DROP/TRUNCATE/ALTER)
+            // Only check the DELETE_NO_WHERE pattern (not DROP/TRUNCATE/ALTER)
         })
         .collect();
     // The suppression logic should prevent DELETE_NO_WHERE from firing

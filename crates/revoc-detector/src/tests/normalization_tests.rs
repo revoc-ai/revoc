@@ -26,7 +26,9 @@ fn test_nfkc_fullwidth_detected() {
     // NFKC-normalizes to ASCII space) → "DROP TABLE" → DDL found.
     let findings = detect("ＤＲＯＰ\u{3000}ＴＡＢＬＥ users");
     assert!(
-        findings.iter().any(|f| f.finding_type == FindingType::DdlMutation),
+        findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::DdlMutation),
         "DDL must be detected in fullwidth input after NFKC normalization"
     );
 }
@@ -62,13 +64,17 @@ fn test_rtlo_removed() {
 fn test_bidi_all_9_stripped() {
     // All 9 BIDI chars must be removed
     let bidi_chars = [
-        '\u{202E}', '\u{202D}', '\u{202A}', '\u{202B}', '\u{202C}',
-        '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+        '\u{202E}', '\u{202D}', '\u{202A}', '\u{202B}', '\u{202C}', '\u{2066}', '\u{2067}',
+        '\u{2068}', '\u{2069}',
     ];
     let text: String = bidi_chars.iter().collect();
     let n = normalize(&text);
     assert!(n.was_modified);
-    assert!(n.text.is_empty(), "All BIDI chars must be stripped; got: {:?}", n.text);
+    assert!(
+        n.text.is_empty(),
+        "All BIDI chars must be stripped; got: {:?}",
+        n.text
+    );
 }
 
 #[test]
@@ -99,7 +105,10 @@ fn test_cyrillic_drop() {
     // 𝐃 𝐑 𝐎 𝐏 = Mathematical Bold D R O P
     let math_bold_drop = "\u{1D403}\u{1D411}\u{1D40E}\u{1D40F} TABLE users";
     let n = normalize(math_bold_drop);
-    assert!(n.was_modified, "Mathematical Bold chars must be NFKC-normalized");
+    assert!(
+        n.was_modified,
+        "Mathematical Bold chars must be NFKC-normalized"
+    );
     assert!(
         n.text.to_uppercase().contains("DROP"),
         "Expected DROP after normalization, got: {:?}",
@@ -108,7 +117,9 @@ fn test_cyrillic_drop() {
     // The DDL detector should now find it
     let findings = detect(math_bold_drop);
     assert!(
-        findings.iter().any(|f| f.finding_type == FindingType::DdlMutation),
+        findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::DdlMutation),
         "DDL must be detected after NFKC normalization of lookalike chars"
     );
 }
@@ -130,7 +141,9 @@ fn test_null_byte_between_words_replaced_with_space() {
 fn test_null_byte_between_words_triggers_ddl_detection() {
     let findings = detect("DROP\x00TABLE users;");
     assert!(
-        findings.iter().any(|f| f.finding_type == FindingType::DdlMutation),
+        findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::DdlMutation),
         "DDL must be detected after null-byte → space replacement; got: {findings:?}"
     );
 }
@@ -170,7 +183,9 @@ fn test_double_encoded_base64_ddl_detected() {
     // The outer value looks like innocent base64; single-pass scanners miss it.
     let findings = detect(&layer2);
     assert!(
-        findings.iter().any(|f| f.finding_type == FindingType::DdlMutation && f.was_encoded),
+        findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::DdlMutation && f.was_encoded),
         "DDL must be detected through double-encoded base64; got: {findings:?}"
     );
 }
@@ -184,7 +199,9 @@ fn test_triple_encoded_base64_ddl_detected() {
     let layer3 = base64::engine::general_purpose::STANDARD.encode(&layer2);
     let findings = detect(&layer3);
     assert!(
-        findings.iter().any(|f| f.finding_type == FindingType::DdlMutation && f.was_encoded),
+        findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::DdlMutation && f.was_encoded),
         "DDL must be detected through triple-encoded base64; got: {findings:?}"
     );
 }
@@ -197,9 +214,9 @@ fn test_double_encoded_ssn_detected() {
     let layer2 = base64::engine::general_purpose::STANDARD.encode(&layer1);
     let findings = detect(&layer2);
     assert!(
-        findings.iter().any(|f| {
-            f.pii_entity == Some(PiiEntityType::UsSsn) && f.was_encoded
-        }),
+        findings
+            .iter()
+            .any(|f| { f.pii_entity == Some(PiiEntityType::UsSsn) && f.was_encoded }),
         "US_SSN must be detected through double-encoded base64; got: {findings:?}"
     );
 }
@@ -236,7 +253,7 @@ fn test_idempotent_50_inputs() {
         "SELECT * FROM users WHERE id=1",
         "INSERT INTO logs (msg) VALUES ('hello')",
         "\u{1D403}\u{1D411}\u{1D40E}\u{1D40F} TABLE users", // Math Bold DROP TABLE
-        "DROP\x00TABLE users",          // NUL between words → "DROP TABLE users"
+        "DROP\x00TABLE users", // NUL between words → "DROP TABLE users"
         "AKIA1234567890ABCDEF",
         "account number: 123456789012",
         "born: 1990-01-15",
@@ -274,7 +291,9 @@ fn test_was_normalized_flag_on_finding() {
     // Fullwidth "DROP　TABLE" (U+3000 ideographic space NFKC→ASCII space)
     // → normalized text = "DROP TABLE" → DDL found with was_normalized=true
     let findings = detect("ＤＲＯＰ\u{3000}ＴＡＢＬＥ users");
-    let ddl = findings.iter().find(|f| f.finding_type == FindingType::DdlMutation);
+    let ddl = findings
+        .iter()
+        .find(|f| f.finding_type == FindingType::DdlMutation);
     assert!(ddl.is_some(), "DDL finding expected from fullwidth input");
     assert!(
         ddl.unwrap().was_normalized,
@@ -289,10 +308,13 @@ fn test_was_encoded_flag_on_finding() {
     let secret = "AKIAIOSFODNN7EXAMPLE";
     let encoded = base64::engine::general_purpose::STANDARD.encode(secret);
     let findings = detect(&encoded);
-    let f = findings.iter().find(|f| {
-        f.pii_entity == Some(PiiEntityType::AwsAccessKey)
-    });
-    assert!(f.is_some(), "AWS key must be detected in base64-encoded input");
+    let f = findings
+        .iter()
+        .find(|f| f.pii_entity == Some(PiiEntityType::AwsAccessKey));
+    assert!(
+        f.is_some(),
+        "AWS key must be detected in base64-encoded input"
+    );
     assert!(
         f.unwrap().was_encoded,
         "Finding from base64-decoded content must have was_encoded=true"

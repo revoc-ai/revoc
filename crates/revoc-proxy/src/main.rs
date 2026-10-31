@@ -106,14 +106,26 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Serve { config } => serve(config).await,
         Command::Migrate { config } => migrate(config.as_ref()).await,
-        Command::ValidateConfig { config } => { validate_config(config.as_ref()); Ok(()) }
-        Command::CheckPolicies { dir } => { check_policies(dir); Ok(()) }
-        Command::GenerateKey { label } => { generate_key(label); Ok(()) }
+        Command::ValidateConfig { config } => {
+            validate_config(config.as_ref());
+            Ok(())
+        }
+        Command::CheckPolicies { dir } => {
+            check_policies(dir);
+            Ok(())
+        }
+        Command::GenerateKey { label } => {
+            generate_key(label);
+            Ok(())
+        }
         Command::Version => {
             println!("revoc-proxy 1.0.0");
             Ok(())
         }
-        Command::Benchmark { quick } => { benchmark(quick); Ok(()) }
+        Command::Benchmark { quick } => {
+            benchmark(quick);
+            Ok(())
+        }
         Command::Emergency { cmd } => emergency_cmd(cmd).await,
     }
 }
@@ -157,14 +169,18 @@ async fn serve(config_path: Option<String>) -> anyhow::Result<()> {
     let state = app::build_app_state(cfg.clone()).await?;
 
     // Kill-switch status
-    if state.kill_switch.global.load(std::sync::atomic::Ordering::Relaxed) {
+    if state
+        .kill_switch
+        .global
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         warn!("🛑 Kill-switch is ACTIVE — all AI traffic will be blocked");
     }
 
     // ── Start Redis kill-switch subscription ──────────────────────────────────
     if cfg.kill_switch.enabled {
-        if let Ok(redis_url) = std::env::var("REDIS_URL")
-            .or_else(|_| std::env::var(&cfg.cache.redis_url_env))
+        if let Ok(redis_url) =
+            std::env::var("REDIS_URL").or_else(|_| std::env::var(&cfg.cache.redis_url_env))
         {
             let ks = Arc::clone(&state.kill_switch);
             tokio::spawn(async move {
@@ -178,8 +194,7 @@ async fn serve(config_path: Option<String>) -> anyhow::Result<()> {
     // ── Build routers ─────────────────────────────────────────────────────────
     let routers = app::build_routers(&state);
 
-    let main_addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port)
-        .parse()?;
+    let main_addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     // Bind on all interfaces — the internal admin/emergency API is protected
     // by X-Admin-Key header authentication (constant-time comparison), so
     // exposing it beyond loopback is safe. A 127.0.0.1-only bind would make
@@ -203,10 +218,8 @@ async fn serve(config_path: Option<String>) -> anyhow::Result<()> {
     );
 
     let dash_fut: tokio::task::JoinHandle<()> = if let Some(dash_router) = routers.dashboard {
-        let dash_addr: SocketAddr = format!(
-            "{}:{}", cfg.server.host, cfg.server.dashboard_port
-        )
-        .parse()?;
+        let dash_addr: SocketAddr =
+            format!("{}:{}", cfg.server.host, cfg.server.dashboard_port).parse()?;
         info!(addr = %dash_addr, "Starting dashboard");
         tokio::spawn(async move {
             if let Ok(listener) = tokio::net::TcpListener::bind(dash_addr).await {
@@ -272,14 +285,21 @@ async fn migrate(config_path: Option<&String>) -> anyhow::Result<()> {
         pool.close().await;
     }
 
-    println!("✓ Applied {} migration statement(s) to {} backend.", statements.len(), cfg.storage.backend);
+    println!(
+        "✓ Applied {} migration statement(s) to {} backend.",
+        statements.len(),
+        cfg.storage.backend
+    );
     Ok(())
 }
 
 fn validate_config(config_path: Option<&String>) {
     match revoc_config::loader::load(config_path.map(String::as_str)) {
         Ok(cfg) => {
-            println!("✓ Configuration valid (environment={})", cfg.server.environment);
+            println!(
+                "✓ Configuration valid (environment={})",
+                cfg.server.environment
+            );
         }
         Err(e) => {
             eprintln!("✗ Configuration invalid: {e}");
@@ -319,17 +339,26 @@ fn check_policies(dir: Option<String>) {
     }
 
     if !failures.is_empty() {
-        eprintln!("✗ {} policy file(s) failed syntax validation:", failures.len());
+        eprintln!(
+            "✗ {} policy file(s) failed syntax validation:",
+            failures.len()
+        );
         for f in &failures {
             eprintln!("  - {f}");
         }
         std::process::exit(1);
     }
-    println!("✓ {} policy file(s) passed syntax validation", rego_files.len());
+    println!(
+        "✓ {} policy file(s) passed syntax validation",
+        rego_files.len()
+    );
 
     // Defer to the `opa` CLI for full semantic/type validation when available
     // (SPEC.md §22 Definition of Done runs `opa check policies/ --strict`).
-    match std::process::Command::new("opa").args(["check", &dir, "--strict"]).output() {
+    match std::process::Command::new("opa")
+        .args(["check", &dir, "--strict"])
+        .output()
+    {
         Ok(output) if output.status.success() => println!("✓ opa check --strict passed"),
         Ok(output) => {
             eprint!("{}", String::from_utf8_lossy(&output.stderr));
@@ -337,13 +366,17 @@ fn check_policies(dir: Option<String>) {
             std::process::exit(1);
         }
         Err(_) => {
-            println!("(opa CLI not found on PATH — semantic check skipped; syntax validation passed)");
+            println!(
+                "(opa CLI not found on PATH — semantic check skipped; syntax validation passed)"
+            );
         }
     }
 }
 
 fn collect_rego_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
@@ -361,7 +394,10 @@ fn validate_rego_syntax(content: &str) -> Result<(), String> {
     if content.trim().is_empty() {
         return Err("file is empty".to_owned());
     }
-    if !content.lines().any(|l| l.trim_start().starts_with("package ")) {
+    if !content
+        .lines()
+        .any(|l| l.trim_start().starts_with("package "))
+    {
         return Err("missing 'package' declaration".to_owned());
     }
     let mut depth: i64 = 0;
@@ -389,7 +425,10 @@ fn generate_key(label: Option<String>) {
 }
 
 fn benchmark(quick: bool) {
-    println!("Running {} benchmark...", if quick { "quick" } else { "full" });
+    println!(
+        "Running {} benchmark...",
+        if quick { "quick" } else { "full" }
+    );
     println!("(Full criterion benchmarks: cargo bench --workspace)");
 }
 
@@ -397,7 +436,12 @@ async fn emergency_cmd(cmd: EmergencyCommand) -> anyhow::Result<()> {
     let internal_url = "http://localhost:8081/internal/emergency/kill-switch";
 
     match cmd {
-        EmergencyCommand::Activate { scope, reason, admin_key, target } => {
+        EmergencyCommand::Activate {
+            scope,
+            reason,
+            admin_key,
+            target,
+        } => {
             let body = serde_json::json!({
                 "scope": scope, "reason": reason,
                 "activated_by": "cli", "target": target
@@ -410,7 +454,11 @@ async fn emergency_cmd(cmd: EmergencyCommand) -> anyhow::Result<()> {
                 .await?;
             println!("{}", resp.text().await?);
         }
-        EmergencyCommand::Deactivate { scope, admin_key, target } => {
+        EmergencyCommand::Deactivate {
+            scope,
+            admin_key,
+            target,
+        } => {
             let body = serde_json::json!({"scope": scope, "target": target});
             let resp = reqwest::Client::new()
                 .post(format!("{internal_url}/deactivate"))

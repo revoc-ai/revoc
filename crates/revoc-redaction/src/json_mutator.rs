@@ -116,10 +116,7 @@ pub fn get_field_text<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a
 ///
 /// # Errors
 /// Returns [`RevocError::Redaction`] if `body` is not valid JSON.
-pub fn normalize_body_fields(
-    body: &[u8],
-    field_paths: &[String],
-) -> Result<Vec<u8>, RevocError> {
+pub fn normalize_body_fields(body: &[u8], field_paths: &[String]) -> Result<Vec<u8>, RevocError> {
     let mut value: serde_json::Value = serde_json::from_slice(body)
         .map_err(|e| RevocError::Redaction(format!("Body is not valid JSON: {e}")))?;
 
@@ -170,7 +167,11 @@ fn navigate_segment_mut<'a>(
 ) -> Option<&'a mut serde_json::Value> {
     if let Some(bracket) = segment.find('[') {
         let key = &segment[..bracket];
-        let mut current = if key.is_empty() { node } else { node.get_mut(key)? };
+        let mut current = if key.is_empty() {
+            node
+        } else {
+            node.get_mut(key)?
+        };
         // Process all [N] index accesses in this segment
         let mut rest = &segment[bracket..];
         while rest.starts_with('[') {

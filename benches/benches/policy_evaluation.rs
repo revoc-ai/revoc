@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use revoc_core::{
-    Action, CallerContext, DetectionTier, EnforcementMode, Finding, FindingType, PolicyDecision,
-    PolicyEngine, PolicyInput, PolicyRuleTier, PiiEntityType, RequestType, Severity,
+    Action, CallerContext, DetectionTier, EnforcementMode, Finding, FindingType, PiiEntityType,
+    PolicyDecision, PolicyEngine, PolicyInput, PolicyRuleTier, RequestType, Severity,
 };
 use revoc_policy::{cache::DecisionCache, conflict, native::NativePolicyEngine};
 use uuid::Uuid;
@@ -64,7 +64,12 @@ fn pii_finding(entity: PiiEntityType, field: &str) -> Finding {
     use revoc_core::TextSpan;
     Finding::new(FindingType::Pii, Severity::High, DetectionTier::Regex)
         .with_pii(entity)
-        .with_span(TextSpan { start: 10, end: 21, field: field.into(), value: None })
+        .with_span(TextSpan {
+            start: 10,
+            end: 21,
+            field: field.into(),
+            value: None,
+        })
         .with_confidence(0.99)
 }
 
@@ -105,7 +110,8 @@ fn bench_cache_hit(c: &mut Criterion) {
     let engine = native_engine_long_ttl();
 
     // Prime the cache before the timed loop starts.
-    let _ = rt.block_on(engine.evaluate(&empty_policy_input()))
+    let _ = rt
+        .block_on(engine.evaluate(&empty_policy_input()))
         .unwrap_or_else(|_| PolicyDecision::allow());
 
     let mut g = c.benchmark_group("policy_cache");
@@ -118,7 +124,8 @@ fn bench_cache_hit(c: &mut Criterion) {
     g.bench_function("hit_target_1_000_000_ops", |b| {
         b.iter(|| {
             let input = criterion::black_box(empty_policy_input());
-            let decision = rt.block_on(engine.evaluate(&input))
+            let decision = rt
+                .block_on(engine.evaluate(&input))
                 .unwrap_or_else(|_| PolicyDecision::allow());
             criterion::black_box(decision);
         });
@@ -141,7 +148,8 @@ fn bench_native_policy_empty(c: &mut Criterion) {
     g.bench_function("empty_findings_target_500_000_ops", |b| {
         b.iter(|| {
             let input = criterion::black_box(empty_policy_input());
-            let decision = rt.block_on(engine.evaluate(&input))
+            let decision = rt
+                .block_on(engine.evaluate(&input))
                 .unwrap_or_else(|_| PolicyDecision::allow());
             criterion::black_box(decision);
         });
@@ -162,7 +170,8 @@ fn bench_native_3_pii(c: &mut Criterion) {
     g.bench_function("ssn_email_cc_redact_decision", |b| {
         b.iter(|| {
             let input = criterion::black_box(policy_input_3_pii());
-            let decision = rt.block_on(engine.evaluate(&input))
+            let decision = rt
+                .block_on(engine.evaluate(&input))
                 .unwrap_or_else(|_| PolicyDecision::allow());
             criterion::black_box(decision);
         });
@@ -175,7 +184,11 @@ fn bench_conflict_5_violations(c: &mut Criterion) {
         make_violation(PolicyRuleTier::Default, Action::Allow, "default_allow"),
         make_violation(PolicyRuleTier::Custom, Action::Audit, "custom_audit"),
         make_violation(PolicyRuleTier::Profile, Action::Redact, "pii_ssn_v1"),
-        make_violation(PolicyRuleTier::Security, Action::Block, "sec_ddl_mutation_v1"),
+        make_violation(
+            PolicyRuleTier::Security,
+            Action::Block,
+            "sec_ddl_mutation_v1",
+        ),
         make_violation(PolicyRuleTier::Emergency, Action::Block, "kill_switch"),
     ];
 

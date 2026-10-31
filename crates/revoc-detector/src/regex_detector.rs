@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use tracing::warn;
 
 use revoc_core::{
-    DetectionStage, DetectionTier, Finding, FindingType, InspectionInput, RequestType,
-    RevocError, TextSpan,
+    DetectionStage, DetectionTier, Finding, FindingType, InspectionInput, RequestType, RevocError,
+    TextSpan,
 };
 
 use crate::{
@@ -268,11 +268,7 @@ pub fn extract_all_text_fields(input: &InspectionInput) -> Vec<(String, String)>
 }
 
 /// Recursively extract all string leaf values from a JSON value.
-fn extract_json_strings(
-    value: &serde_json::Value,
-    path: &str,
-    out: &mut Vec<(String, String)>,
-) {
+fn extract_json_strings(value: &serde_json::Value, path: &str, out: &mut Vec<(String, String)>) {
     match value {
         serde_json::Value::String(s) => {
             out.push((path.to_owned(), s.clone()));

@@ -74,7 +74,6 @@ pub struct Config {
     pub webhooks: WebhooksConfig,
 }
 
-
 impl Config {
     /// Returns `true` when this is a production deployment.
     pub fn is_production(&self) -> bool {
@@ -106,12 +105,7 @@ impl Config {
         }
 
         // Exactly one provider must be the default
-        let default_count = self
-            .upstream
-            .providers
-            .iter()
-            .filter(|p| p.default)
-            .count();
+        let default_count = self.upstream.providers.iter().filter(|p| p.default).count();
         match default_count {
             0 => {
                 return Err(RevocError::Configuration(
@@ -170,15 +164,33 @@ impl Config {
 
 // ── [server] ──────────────────────────────────────────────────────────────────
 
-fn default_host() -> String { "0.0.0.0".into() }
-fn default_port() -> u16 { 8080 }
-fn default_dashboard_port() -> u16 { 3000 }
-fn default_environment() -> String { "production".into() }
-fn default_max_request_body_bytes() -> usize { 10_485_760 }
-fn default_max_response_body_bytes() -> usize { 52_428_800 }
-fn default_shutdown_timeout_secs() -> u64 { 120 }
-fn default_http2_enabled() -> bool { true }
-fn default_dashboard_base_url() -> String { "http://localhost:3000".into() }
+fn default_host() -> String {
+    "0.0.0.0".into()
+}
+fn default_port() -> u16 {
+    8080
+}
+fn default_dashboard_port() -> u16 {
+    3000
+}
+fn default_environment() -> String {
+    "production".into()
+}
+fn default_max_request_body_bytes() -> usize {
+    10_485_760
+}
+fn default_max_response_body_bytes() -> usize {
+    52_428_800
+}
+fn default_shutdown_timeout_secs() -> u64 {
+    120
+}
+fn default_http2_enabled() -> bool {
+    true
+}
+fn default_dashboard_base_url() -> String {
+    "http://localhost:3000".into()
+}
 
 /// HTTP listener and process-level settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,15 +235,15 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            host:                    default_host(),
-            port:                    default_port(),
-            dashboard_port:          default_dashboard_port(),
-            environment:             default_environment(),
-            max_request_body_bytes:  default_max_request_body_bytes(),
+            host: default_host(),
+            port: default_port(),
+            dashboard_port: default_dashboard_port(),
+            environment: default_environment(),
+            max_request_body_bytes: default_max_request_body_bytes(),
             max_response_body_bytes: default_max_response_body_bytes(),
-            shutdown_timeout_secs:   default_shutdown_timeout_secs(),
-            http2_enabled:           default_http2_enabled(),
-            dashboard_base_url:      default_dashboard_base_url(),
+            shutdown_timeout_secs: default_shutdown_timeout_secs(),
+            http2_enabled: default_http2_enabled(),
+            dashboard_base_url: default_dashboard_base_url(),
         }
     }
 }
@@ -245,20 +257,26 @@ impl ServerConfig {
 
 // ── [upstream] ────────────────────────────────────────────────────────────────
 
-fn default_timeout_ms() -> u64 { 120_000 }
-fn default_connect_timeout_ms() -> u64 { 5_000 }
-fn default_max_idle_connections_per_host() -> usize { 100 }
+fn default_timeout_ms() -> u64 {
+    120_000
+}
+fn default_connect_timeout_ms() -> u64 {
+    5_000
+}
+fn default_max_idle_connections_per_host() -> usize {
+    100
+}
 fn default_mock_response() -> String {
     "Mock response. Governance pipeline ran.".into()
 }
 fn default_providers() -> Vec<ProviderConfig> {
     vec![ProviderConfig {
-        name:        "openai".into(),
-        base_url:    "https://api.openai.com".into(),
+        name: "openai".into(),
+        base_url: "https://api.openai.com".into(),
         api_key_env: "OPENAI_API_KEY".into(),
         api_key_file: String::new(),
-        format:      "openai".into(),
-        default:     true,
+        format: "openai".into(),
+        default: true,
     }]
 }
 
@@ -293,12 +311,12 @@ pub struct UpstreamConfig {
 impl Default for UpstreamConfig {
     fn default() -> Self {
         Self {
-            timeout_ms:                  default_timeout_ms(),
-            connect_timeout_ms:          default_connect_timeout_ms(),
+            timeout_ms: default_timeout_ms(),
+            connect_timeout_ms: default_connect_timeout_ms(),
             max_idle_connections_per_host: default_max_idle_connections_per_host(),
-            mock_mode:                   false,
-            mock_response:               default_mock_response(),
-            providers:                   default_providers(),
+            mock_mode: false,
+            mock_response: default_mock_response(),
+            providers: default_providers(),
         }
     }
 }
@@ -329,7 +347,9 @@ pub struct ProviderConfig {
     pub default: bool,
 }
 
-fn default_format() -> String { "openai".into() }
+fn default_format() -> String {
+    "openai".into()
+}
 
 impl ProviderConfig {
     /// Read the API key from file (preferred) or environment variable.
@@ -358,13 +378,27 @@ impl ProviderConfig {
 
 // ── [policy] ──────────────────────────────────────────────────────────────────
 
-fn default_policy_engine() -> String { "native".into() }
-fn default_enforcement_mode() -> String { "enforce".into() }
-fn default_opa_url() -> String { "http://localhost:8181".into() }
-fn default_opa_timeout_ms() -> u64 { 2_000 }
-fn default_decision_cache_ttl_secs() -> u64 { 60 }
-fn default_decision_cache_max_entries() -> usize { 10_000 }
-fn default_conflict_resolution() -> String { "tier_based".into() }
+fn default_policy_engine() -> String {
+    "native".into()
+}
+fn default_enforcement_mode() -> String {
+    "enforce".into()
+}
+fn default_opa_url() -> String {
+    "http://localhost:8181".into()
+}
+fn default_opa_timeout_ms() -> u64 {
+    2_000
+}
+fn default_decision_cache_ttl_secs() -> u64 {
+    60
+}
+fn default_decision_cache_max_entries() -> usize {
+    10_000
+}
+fn default_conflict_resolution() -> String {
+    "tier_based".into()
+}
 
 /// Policy engine selection and enforcement settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -409,15 +443,15 @@ pub struct PolicyConfig {
 impl Default for PolicyConfig {
     fn default() -> Self {
         Self {
-            engine:                    default_policy_engine(),
-            enforcement_mode:          default_enforcement_mode(),
-            opa_url:                   default_opa_url(),
-            opa_timeout_ms:            default_opa_timeout_ms(),
-            wasm_bundle_path:          String::new(),
-            fail_open:                 false,
-            decision_cache_ttl_secs:   default_decision_cache_ttl_secs(),
+            engine: default_policy_engine(),
+            enforcement_mode: default_enforcement_mode(),
+            opa_url: default_opa_url(),
+            opa_timeout_ms: default_opa_timeout_ms(),
+            wasm_bundle_path: String::new(),
+            fail_open: false,
+            decision_cache_ttl_secs: default_decision_cache_ttl_secs(),
             decision_cache_max_entries: default_decision_cache_max_entries(),
-            conflict_resolution:       default_conflict_resolution(),
+            conflict_resolution: default_conflict_resolution(),
         }
     }
 }
@@ -439,8 +473,12 @@ impl PolicyConfig {
 
 // ── [governance] ──────────────────────────────────────────────────────────────
 
-fn default_max_depth() -> u8 { 10 }
-fn default_depth_exceeded_action() -> String { "block".into() }
+fn default_max_depth() -> u8 {
+    10
+}
+fn default_depth_exceeded_action() -> String {
+    "block".into()
+}
 
 /// Governance recursion depth limiting (SPEC.md §9 D9).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -459,17 +497,23 @@ pub struct GovernanceConfig {
 impl Default for GovernanceConfig {
     fn default() -> Self {
         Self {
-            max_depth:              default_max_depth(),
-            depth_exceeded_action:  default_depth_exceeded_action(),
+            max_depth: default_max_depth(),
+            depth_exceeded_action: default_depth_exceeded_action(),
         }
     }
 }
 
 // ── [kill_switch] ─────────────────────────────────────────────────────────────
 
-fn default_kill_switch_enabled() -> bool { true }
-fn default_redis_channel() -> String { "revoc:kill_switch".into() }
-fn default_on_redis_unavailable() -> String { "local_only".into() }
+fn default_kill_switch_enabled() -> bool {
+    true
+}
+fn default_redis_channel() -> String {
+    "revoc:kill_switch".into()
+}
+fn default_on_redis_unavailable() -> String {
+    "local_only".into()
+}
 
 /// Emergency kill-switch subsystem (SPEC.md §9 D11).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -490,8 +534,8 @@ pub struct KillSwitchConfig {
 impl Default for KillSwitchConfig {
     fn default() -> Self {
         Self {
-            enabled:              default_kill_switch_enabled(),
-            redis_channel:        default_redis_channel(),
+            enabled: default_kill_switch_enabled(),
+            redis_channel: default_redis_channel(),
             on_redis_unavailable: default_on_redis_unavailable(),
         }
     }
@@ -499,12 +543,24 @@ impl Default for KillSwitchConfig {
 
 // ── [detection] ───────────────────────────────────────────────────────────────
 
-fn default_normalize_before_scan() -> bool { true }
-fn default_regex_enabled() -> bool { true }
-fn default_onnx_model_path() -> String { "models/bert-base-ner.onnx".into() }
-fn default_onnx_tokenizer_path() -> String { "models/bert-base-ner-tokenizer.json".into() }
-fn default_decode_base64_args() -> bool { true }
-fn default_decode_url_encoded_args() -> bool { true }
+fn default_normalize_before_scan() -> bool {
+    true
+}
+fn default_regex_enabled() -> bool {
+    true
+}
+fn default_onnx_model_path() -> String {
+    "models/bert-base-ner.onnx".into()
+}
+fn default_onnx_tokenizer_path() -> String {
+    "models/bert-base-ner-tokenizer.json".into()
+}
+fn default_decode_base64_args() -> bool {
+    true
+}
+fn default_decode_url_encoded_args() -> bool {
+    true
+}
 
 /// Detection engine configuration (all tiers).
 #[allow(clippy::struct_excessive_bools)]
@@ -556,16 +612,16 @@ pub struct DetectionConfig {
 impl Default for DetectionConfig {
     fn default() -> Self {
         Self {
-            normalize_before_scan:    default_normalize_before_scan(),
-            regex_enabled:            default_regex_enabled(),
-            onnx_enabled:             false,
-            onnx_model_path:          default_onnx_model_path(),
-            onnx_tokenizer_path:      default_onnx_tokenizer_path(),
-            presidio_enabled:         false,
-            presidio_url:             String::new(),
-            decode_base64_args:       default_decode_base64_args(),
-            decode_url_encoded_args:  default_decode_url_encoded_args(),
-            http_plugins:             vec![],
+            normalize_before_scan: default_normalize_before_scan(),
+            regex_enabled: default_regex_enabled(),
+            onnx_enabled: false,
+            onnx_model_path: default_onnx_model_path(),
+            onnx_tokenizer_path: default_onnx_tokenizer_path(),
+            presidio_enabled: false,
+            presidio_url: String::new(),
+            decode_base64_args: default_decode_base64_args(),
+            decode_url_encoded_args: default_decode_url_encoded_args(),
+            http_plugins: vec![],
         }
     }
 }
@@ -588,13 +644,21 @@ pub struct HttpPluginConfig {
     pub enabled: bool,
 }
 
-fn default_http_plugin_timeout_ms() -> u64 { 500 }
-fn default_true() -> bool { true }
+fn default_http_plugin_timeout_ms() -> u64 {
+    500
+}
+fn default_true() -> bool {
+    true
+}
 
 // ── [stream] ──────────────────────────────────────────────────────────────────
 
-fn default_sliding_window_size() -> usize { 256 }
-fn default_tool_call_accumulate() -> bool { true }
+fn default_sliding_window_size() -> usize {
+    256
+}
+fn default_tool_call_accumulate() -> bool {
+    true
+}
 
 /// Streaming SSE response governance settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -618,8 +682,8 @@ pub struct StreamConfig {
 impl Default for StreamConfig {
     fn default() -> Self {
         Self {
-            buffer_output:        false,
-            sliding_window_size:  default_sliding_window_size(),
+            buffer_output: false,
+            sliding_window_size: default_sliding_window_size(),
             tool_call_accumulate: default_tool_call_accumulate(),
         }
     }
@@ -627,8 +691,12 @@ impl Default for StreamConfig {
 
 // ── [mcp] ─────────────────────────────────────────────────────────────────────
 
-fn default_analyze_tool_manifests() -> bool { true }
-fn default_dangerous_tool_action() -> String { "audit".into() }
+fn default_analyze_tool_manifests() -> bool {
+    true
+}
+fn default_dangerous_tool_action() -> String {
+    "audit".into()
+}
 
 /// MCP protocol governance configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -655,10 +723,10 @@ pub struct McpConfig {
 impl Default for McpConfig {
     fn default() -> Self {
         Self {
-            analyze_tool_manifests:     default_analyze_tool_manifests(),
+            analyze_tool_manifests: default_analyze_tool_manifests(),
             auto_disable_dangerous_tools: false,
-            dangerous_tool_action:      default_dangerous_tool_action(),
-            trusted_servers:            vec![],
+            dangerous_tool_action: default_dangerous_tool_action(),
+            trusted_servers: vec![],
         }
     }
 }
@@ -679,9 +747,15 @@ pub struct TrustedMcpServer {
 
 // ── [session] ─────────────────────────────────────────────────────────────────
 
-fn default_session_enabled() -> bool { true }
-fn default_session_ttl_secs() -> u64 { 3_600 }
-fn default_max_rows_before_alert() -> u64 { 500 }
+fn default_session_enabled() -> bool {
+    true
+}
+fn default_session_ttl_secs() -> u64 {
+    3_600
+}
+fn default_max_rows_before_alert() -> u64 {
+    500
+}
 
 /// Per-session governance state tracking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -702,8 +776,8 @@ pub struct SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            enabled:              default_session_enabled(),
-            ttl_secs:             default_session_ttl_secs(),
+            enabled: default_session_enabled(),
+            ttl_secs: default_session_ttl_secs(),
             max_rows_before_alert: default_max_rows_before_alert(),
         }
     }
@@ -711,11 +785,21 @@ impl Default for SessionConfig {
 
 // ── [storage] ─────────────────────────────────────────────────────────────────
 
-fn default_storage_backend() -> String { "sqlite".into() }
-fn default_sqlite_path() -> String { "revoc-audit.db".into() }
-fn default_postgres_url_env() -> String { "DATABASE_URL".into() }
-fn default_pool_size() -> u32 { 20 }
-fn default_migrations_auto_run() -> bool { true }
+fn default_storage_backend() -> String {
+    "sqlite".into()
+}
+fn default_sqlite_path() -> String {
+    "revoc-audit.db".into()
+}
+fn default_postgres_url_env() -> String {
+    "DATABASE_URL".into()
+}
+fn default_pool_size() -> u32 {
+    20
+}
+fn default_migrations_auto_run() -> bool {
+    true
+}
 
 /// Audit event and policy bundle storage settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -748,19 +832,25 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            backend:             default_storage_backend(),
-            sqlite_path:         default_sqlite_path(),
-            postgres_url_env:    default_postgres_url_env(),
-            pool_size:           default_pool_size(),
+            backend: default_storage_backend(),
+            sqlite_path: default_sqlite_path(),
+            postgres_url_env: default_postgres_url_env(),
+            pool_size: default_pool_size(),
             migrations_auto_run: default_migrations_auto_run(),
-            audit:               AuditConfig::default(),
+            audit: AuditConfig::default(),
         }
     }
 }
 
-fn default_audit_write_batch_size() -> usize { 100 }
-fn default_audit_write_interval_ms() -> u64 { 100 }
-fn default_audit_retention_days() -> u32 { 90 }
+fn default_audit_write_batch_size() -> usize {
+    100
+}
+fn default_audit_write_interval_ms() -> u64 {
+    100
+}
+fn default_audit_retention_days() -> u32 {
+    90
+}
 
 /// Audit event write and retention settings (flattened into [`StorageConfig`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -781,17 +871,21 @@ pub struct AuditConfig {
 impl Default for AuditConfig {
     fn default() -> Self {
         Self {
-            audit_write_batch_size:  default_audit_write_batch_size(),
+            audit_write_batch_size: default_audit_write_batch_size(),
             audit_write_interval_ms: default_audit_write_interval_ms(),
-            audit_retention_days:    default_audit_retention_days(),
+            audit_retention_days: default_audit_retention_days(),
         }
     }
 }
 
 // ── [cache] ───────────────────────────────────────────────────────────────────
 
-fn default_cache_backend() -> String { "memory".into() }
-fn default_redis_url_env() -> String { "REDIS_URL".into() }
+fn default_cache_backend() -> String {
+    "memory".into()
+}
+fn default_redis_url_env() -> String {
+    "REDIS_URL".into()
+}
 
 /// Policy decision cache backend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -808,7 +902,7 @@ pub struct CacheConfig {
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
-            backend:       default_cache_backend(),
+            backend: default_cache_backend(),
             redis_url_env: default_redis_url_env(),
         }
     }
@@ -816,12 +910,24 @@ impl Default for CacheConfig {
 
 // ── [telemetry] ───────────────────────────────────────────────────────────────
 
-fn default_service_name() -> String { "revoc-proxy".into() }
-fn default_service_version() -> String { "1.0.0".into() }
-fn default_sample_rate() -> f64 { 1.0 }
-fn default_prometheus_port() -> u16 { 9090 }
-fn default_log_level() -> String { "info".into() }
-fn default_log_format() -> String { "json".into() }
+fn default_service_name() -> String {
+    "revoc-proxy".into()
+}
+fn default_service_version() -> String {
+    "1.0.0".into()
+}
+fn default_sample_rate() -> f64 {
+    1.0
+}
+fn default_prometheus_port() -> u16 {
+    9090
+}
+fn default_log_level() -> String {
+    "info".into()
+}
+fn default_log_format() -> String {
+    "json".into()
+}
 
 /// OpenTelemetry tracing, Prometheus metrics, and structured logging settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -858,23 +964,31 @@ pub struct TelemetryConfig {
 impl Default for TelemetryConfig {
     fn default() -> Self {
         Self {
-            otlp_endpoint:   String::new(),
-            service_name:    default_service_name(),
+            otlp_endpoint: String::new(),
+            service_name: default_service_name(),
             service_version: default_service_version(),
-            sample_rate:     default_sample_rate(),
+            sample_rate: default_sample_rate(),
             prometheus_port: default_prometheus_port(),
-            log_level:       default_log_level(),
-            log_format:      default_log_format(),
+            log_level: default_log_level(),
+            log_format: default_log_format(),
         }
     }
 }
 
 // ── [auth] ────────────────────────────────────────────────────────────────────
 
-fn default_auth_mode() -> String { "apikey".into() }
-fn default_jwt_secret_env() -> String { "REVOC_JWT_SECRET".into() }
-fn default_api_keys_env() -> String { "REVOC_API_KEYS".into() }
-fn default_admin_key() -> String { "dev-admin-key".into() }
+fn default_auth_mode() -> String {
+    "apikey".into()
+}
+fn default_jwt_secret_env() -> String {
+    "REVOC_JWT_SECRET".into()
+}
+fn default_api_keys_env() -> String {
+    "REVOC_API_KEYS".into()
+}
+fn default_admin_key() -> String {
+    "dev-admin-key".into()
+}
 
 /// Proxy authentication configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -911,19 +1025,23 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            mode:           default_auth_mode(),
+            mode: default_auth_mode(),
             jwt_secret_env: default_jwt_secret_env(),
-            api_keys_env:   default_api_keys_env(),
-            api_keys_file:  String::new(),
-            admin_key:      default_admin_key(),
+            api_keys_env: default_api_keys_env(),
+            api_keys_file: String::new(),
+            admin_key: default_admin_key(),
         }
     }
 }
 
 // ── [dashboard] ───────────────────────────────────────────────────────────────
 
-fn default_dashboard_auth_mode() -> String { "shared".into() }
-fn default_max_sse_connections() -> usize { 100 }
+fn default_dashboard_auth_mode() -> String {
+    "shared".into()
+}
+fn default_max_sse_connections() -> usize {
+    100
+}
 
 /// Embedded React dashboard settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -940,7 +1058,7 @@ pub struct DashboardConfig {
 impl Default for DashboardConfig {
     fn default() -> Self {
         Self {
-            auth_mode:           default_dashboard_auth_mode(),
+            auth_mode: default_dashboard_auth_mode(),
             max_sse_connections: default_max_sse_connections(),
         }
     }
@@ -979,5 +1097,9 @@ pub struct WebhookEndpoint {
     pub cooldown_minutes: u32,
 }
 
-fn default_min_severity() -> String { "high".into() }
-fn default_cooldown_minutes() -> u32 { 5 }
+fn default_min_severity() -> String {
+    "high".into()
+}
+fn default_cooldown_minutes() -> u32 {
+    5
+}

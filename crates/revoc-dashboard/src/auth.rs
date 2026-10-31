@@ -20,7 +20,10 @@ pub struct DashboardAuth {
 impl DashboardAuth {
     /// Create a new auth configuration.
     pub fn new(mode: impl Into<String>, api_keys: Vec<String>) -> Self {
-        Self { api_keys, mode: mode.into() }
+        Self {
+            api_keys,
+            mode: mode.into(),
+        }
     }
 
     /// Validate the `Authorization` or `X-Api-Key` header using constant-time comparison.
@@ -33,11 +36,7 @@ impl DashboardAuth {
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.trim_start_matches("Bearer ").trim())
-            .or_else(|| {
-                headers
-                    .get("x-api-key")
-                    .and_then(|v| v.to_str().ok())
-            });
+            .or_else(|| headers.get("x-api-key").and_then(|v| v.to_str().ok()));
 
         match provided {
             None => false,

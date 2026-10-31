@@ -58,14 +58,16 @@ pub async fn activate_handler(
     headers: axum::http::HeaderMap,
     Json(req): Json<ActivateRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let admin_key = headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let admin_key = headers
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if !validate_admin_key(admin_key, &state) {
         warn!("Kill-switch activate: unauthorized attempt");
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let scope = parse_scope(&req.scope, req.target.as_deref())
-        .ok_or(StatusCode::BAD_REQUEST)?;
+    let scope = parse_scope(&req.scope, req.target.as_deref()).ok_or(StatusCode::BAD_REQUEST)?;
 
     let entry = KillSwitchEntry {
         activated_by: req.activated_by.clone(),
@@ -77,11 +79,26 @@ pub async fn activate_handler(
     state.kill_switch.activate(entry.clone());
 
     // Publish to Redis for cross-instance propagation (~50ms)
-    crate::kill_switch::publish_kill_switch_message(&state.config, "activate", Some(entry.clone()), None);
+    crate::kill_switch::publish_kill_switch_message(
+        &state.config,
+        "activate",
+        Some(entry.clone()),
+        None,
+    );
 
     // Persist to kill_switch_log (SPEC.md §23 Rule 26) — non-blocking failure.
     let (scope_str, scope_value) = scope_log_parts(&scope);
-    if let Err(e) = state.kill_switch_log.log(scope_str, scope_value, "activate", &entry.activated_by, Some(&entry.reason)).await {
+    if let Err(e) = state
+        .kill_switch_log
+        .log(
+            scope_str,
+            scope_value,
+            "activate",
+            &entry.activated_by,
+            Some(&entry.reason),
+        )
+        .await
+    {
         warn!(error = %e, "Failed to write kill_switch_log entry");
     }
 
@@ -98,17 +115,24 @@ pub async fn deactivate_handler(
     headers: axum::http::HeaderMap,
     Json(req): Json<DeactivateRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let admin_key = headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let admin_key = headers
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if !validate_admin_key(admin_key, &state) {
         warn!("Kill-switch deactivate: unauthorized attempt");
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let scope = parse_scope(&req.scope, req.target.as_deref())
-        .ok_or(StatusCode::BAD_REQUEST)?;
+    let scope = parse_scope(&req.scope, req.target.as_deref()).ok_or(StatusCode::BAD_REQUEST)?;
 
     state.kill_switch.deactivate(&scope);
-    crate::kill_switch::publish_kill_switch_message(&state.config, "deactivate", None, Some(scope.clone()));
+    crate::kill_switch::publish_kill_switch_message(
+        &state.config,
+        "deactivate",
+        None,
+        Some(scope.clone()),
+    );
 
     // Persist to kill_switch_log (SPEC.md §23 Rule 26) — non-blocking failure.
     // The deactivate request carries no `activated_by` field, so the actor is
@@ -116,11 +140,17 @@ pub async fn deactivate_handler(
     // stable, non-reversible derivation used for API-key callers.
     let actor = derive_caller_id(admin_key);
     let (scope_str, scope_value) = scope_log_parts(&scope);
-    if let Err(e) = state.kill_switch_log.log(scope_str, scope_value, "deactivate", &actor, None).await {
+    if let Err(e) = state
+        .kill_switch_log
+        .log(scope_str, scope_value, "deactivate", &actor, None)
+        .await
+    {
         warn!(error = %e, "Failed to write kill_switch_log entry");
     }
 
-    Ok(Json(serde_json::json!({"status": "deactivated", "scope": req.scope})))
+    Ok(Json(
+        serde_json::json!({"status": "deactivated", "scope": req.scope}),
+    ))
 }
 
 /// `GET /internal/emergency/kill-switch/status`

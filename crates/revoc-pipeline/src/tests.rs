@@ -1,6 +1,4 @@
-use revoc_core::{
-    DetectionTier, Finding, FindingType, PiiEntityType, Severity, TextSpan,
-};
+use revoc_core::{DetectionTier, Finding, FindingType, PiiEntityType, Severity, TextSpan};
 
 use crate::deduplication::deduplicate;
 
@@ -20,12 +18,25 @@ fn span_finding(
         f = f.with_pii(e);
     }
     f = f.with_confidence(confidence);
-    f.span = Some(TextSpan { start, end, field: field.into(), value: None });
+    f.span = Some(TextSpan {
+        start,
+        end,
+        field: field.into(),
+        value: None,
+    });
     f
 }
 
 fn simple(sev: Severity, field: &str, start: usize, end: usize) -> Finding {
-    span_finding(FindingType::Pii, sev, Some(PiiEntityType::EmailAddress), field, start, end, 1.0)
+    span_finding(
+        FindingType::Pii,
+        sev,
+        Some(PiiEntityType::EmailAddress),
+        field,
+        start,
+        end,
+        1.0,
+    )
 }
 
 // ── Empty / single-element passthrough ────────────────────────────────────────
@@ -47,16 +58,29 @@ fn test_single_finding_passthrough() {
 #[test]
 fn test_exact_duplicate_keeps_higher_confidence() {
     let high_conf = span_finding(
-        FindingType::Pii, Severity::High, Some(PiiEntityType::EmailAddress),
-        "content", 0, 10, 0.95,
+        FindingType::Pii,
+        Severity::High,
+        Some(PiiEntityType::EmailAddress),
+        "content",
+        0,
+        10,
+        0.95,
     );
     let low_conf = span_finding(
-        FindingType::Pii, Severity::High, Some(PiiEntityType::EmailAddress),
-        "content", 0, 10, 0.60,
+        FindingType::Pii,
+        Severity::High,
+        Some(PiiEntityType::EmailAddress),
+        "content",
+        0,
+        10,
+        0.60,
     );
     let result = deduplicate(vec![low_conf, high_conf]);
     assert_eq!(result.len(), 1);
-    assert!((result[0].confidence - 0.95).abs() < 1e-9, "Higher confidence must survive");
+    assert!(
+        (result[0].confidence - 0.95).abs() < 1e-9,
+        "Higher confidence must survive"
+    );
 }
 
 // ── Contained spans — inner wins ──────────────────────────────────────────────
@@ -78,16 +102,30 @@ fn test_inner_span_beats_outer_same_severity() {
 fn test_higher_severity_wins_even_with_larger_span() {
     // A Critical DDL finding over a larger span beats a High PII finding on a smaller span.
     let critical_outer = span_finding(
-        FindingType::DdlMutation, Severity::Critical, None,
-        "content", 0, 30, 1.0,
+        FindingType::DdlMutation,
+        Severity::Critical,
+        None,
+        "content",
+        0,
+        30,
+        1.0,
     );
     let high_inner = span_finding(
-        FindingType::Pii, Severity::High, Some(PiiEntityType::EmailAddress),
-        "content", 5, 15, 1.0,
+        FindingType::Pii,
+        Severity::High,
+        Some(PiiEntityType::EmailAddress),
+        "content",
+        5,
+        15,
+        1.0,
     );
     let result = deduplicate(vec![critical_outer, high_inner]);
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0].finding_type, FindingType::DdlMutation, "Critical must survive");
+    assert_eq!(
+        result[0].finding_type,
+        FindingType::DdlMutation,
+        "Critical must survive"
+    );
     let s = result[0].span.as_ref().unwrap();
     assert_eq!((s.start, s.end), (0, 30));
 }
@@ -142,7 +180,15 @@ fn test_was_normalized_preferred_over_not_normalized() {
 #[test]
 fn test_sort_severity_descending() {
     let low = span_finding(FindingType::Pii, Severity::Low, None, "a", 0, 5, 1.0);
-    let crit = span_finding(FindingType::DdlMutation, Severity::Critical, None, "b", 0, 5, 1.0);
+    let crit = span_finding(
+        FindingType::DdlMutation,
+        Severity::Critical,
+        None,
+        "b",
+        0,
+        5,
+        1.0,
+    );
     let high = span_finding(FindingType::Pii, Severity::High, None, "c", 0, 5, 1.0);
     let result = deduplicate(vec![low, crit, high]);
     assert_eq!(result[0].severity, Severity::Critical);
@@ -156,7 +202,10 @@ fn test_sort_confidence_descending_within_same_severity() {
     let f2 = span_finding(FindingType::Pii, Severity::High, None, "b", 0, 5, 0.99);
     let result = deduplicate(vec![f1, f2]);
     assert_eq!(result.len(), 2);
-    assert!((result[0].confidence - 0.99).abs() < 1e-9, "Higher confidence must be first");
+    assert!(
+        (result[0].confidence - 0.99).abs() < 1e-9,
+        "Higher confidence must be first"
+    );
 }
 
 // ── Span-less findings dedup on entity + type ─────────────────────────────────

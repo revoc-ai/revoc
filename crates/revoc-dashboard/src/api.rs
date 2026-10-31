@@ -28,28 +28,30 @@ pub struct DashboardState {
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     /// Filter by effective action (allow/redact/block/audit).
-    decision:  Option<String>,
+    decision: Option<String>,
     /// Filter by caller ID.
     caller_id: Option<String>,
     /// Filter by a violated rule ID.
-    rule_id:   Option<String>,
+    rule_id: Option<String>,
     #[allow(dead_code)]
     /// Filter to events at or after this ISO 8601 timestamp.
     start_time: Option<String>,
     #[allow(dead_code)]
     /// Filter to events at or before this ISO 8601 timestamp.
-    end_time:   Option<String>,
+    end_time: Option<String>,
     /// Look up by exact trace ID.
-    trace_id:   Option<String>,
+    trace_id: Option<String>,
     /// Maximum number of rows to return (default 25).
     #[serde(default = "default_limit")]
-    limit:  usize,
+    limit: usize,
     /// Rows to skip for pagination.
     #[serde(default)]
     offset: usize,
 }
 
-fn default_limit() -> usize { 25 }
+fn default_limit() -> usize {
+    25
+}
 
 /// Paginated list of audit events.
 #[derive(Serialize)]
@@ -57,9 +59,9 @@ pub struct PaginatedEvents {
     /// Events in this page.
     events: Vec<AuditEvent>,
     /// Total matching events across all pages.
-    total:  u64,
+    total: u64,
     /// Page size used for this query.
-    limit:  usize,
+    limit: usize,
     /// Offset used for this query.
     offset: usize,
 }
@@ -73,12 +75,12 @@ pub async fn list_requests(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<PaginatedEvents>, StatusCode> {
     let filter = EventFilter {
-        decision:  q.decision,
+        decision: q.decision,
         caller_id: q.caller_id,
-        rule_id:   q.rule_id,
-        trace_id:  q.trace_id,
-        limit:     Some(q.limit),
-        offset:    Some(q.offset),
+        rule_id: q.rule_id,
+        trace_id: q.trace_id,
+        limit: Some(q.limit),
+        offset: Some(q.offset),
         ..Default::default()
     };
 
@@ -87,7 +89,12 @@ pub async fn list_requests(
         .list_events(filter)
         .await
         .map(|(events, total)| {
-            Json(PaginatedEvents { events, total, limit: q.limit, offset: q.offset })
+            Json(PaginatedEvents {
+                events,
+                total,
+                limit: q.limit,
+                offset: q.offset,
+            })
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
@@ -119,7 +126,9 @@ pub struct WindowQuery {
     window: String,
 }
 
-fn default_window() -> String { "24h".into() }
+fn default_window() -> String {
+    "24h".into()
+}
 
 /// `GET /dashboard/api/analytics`
 ///
@@ -161,47 +170,258 @@ pub async fn get_costs(
 #[derive(Serialize)]
 pub struct Rule {
     /// Unique rule identifier (e.g. `"pii_ssn_v1"`).
-    id:          &'static str,
-    entity:      &'static str,
-    action:      &'static str,
-    tier:        &'static str,
-    severity:    &'static str,
+    id: &'static str,
+    entity: &'static str,
+    action: &'static str,
+    tier: &'static str,
+    severity: &'static str,
     description: &'static str,
 }
 
 /// `GET /dashboard/api/rules` — returns the 30 default rule catalogue.
+#[allow(clippy::too_many_lines)]
 pub async fn get_rules() -> Json<Vec<Rule>> {
     Json(vec![
-        Rule { id:"pii_ssn_v1",            entity:"US_SSN",              action:"remove",  tier:"profile",   severity:"high",     description:"US Social Security Number" },
-        Rule { id:"pii_credit_card_v1",    entity:"CREDIT_CARD",         action:"remove",  tier:"profile",   severity:"high",     description:"Credit/debit card (Luhn validated)" },
-        Rule { id:"pii_iban_v1",           entity:"IBAN_CODE",           action:"remove",  tier:"profile",   severity:"high",     description:"IBAN (mod-97 validated)" },
-        Rule { id:"pii_bank_account_v1",   entity:"BANK_ACCOUNT",        action:"remove",  tier:"profile",   severity:"high",     description:"Bank account number" },
-        Rule { id:"pii_passport_v1",       entity:"US_PASSPORT",         action:"remove",  tier:"profile",   severity:"high",     description:"US passport number" },
-        Rule { id:"pii_driver_license_v1", entity:"US_DRIVER_LICENSE",   action:"mask",    tier:"profile",   severity:"medium",   description:"US driver's license" },
-        Rule { id:"pii_email_v1",          entity:"EMAIL_ADDRESS",       action:"mask",    tier:"profile",   severity:"medium",   description:"Email address" },
-        Rule { id:"pii_phone_v1",          entity:"PHONE_NUMBER",        action:"mask",    tier:"profile",   severity:"low",      description:"Phone number" },
-        Rule { id:"pii_ip_address_v1",     entity:"IP_ADDRESS_V4/V6",   action:"mask",    tier:"profile",   severity:"low",      description:"IP address" },
-        Rule { id:"pii_mrn_v1",            entity:"MEDICAL_RECORD_NUMBER",action:"remove", tier:"profile",   severity:"high",     description:"Medical record number" },
-        Rule { id:"pii_dob_v1",            entity:"DATE_OF_BIRTH",       action:"mask",    tier:"profile",   severity:"medium",   description:"Date of birth" },
-        Rule { id:"secret_block_v1",       entity:"ANY_SECRET",          action:"block",   tier:"security",  severity:"critical", description:"Secret credential (umbrella)" },
-        Rule { id:"secret_aws_key_v1",     entity:"AWS_ACCESS_KEY",      action:"remove",  tier:"security",  severity:"critical", description:"AWS access key ID" },
-        Rule { id:"secret_aws_secret_v1",  entity:"AWS_SECRET_KEY",      action:"remove",  tier:"security",  severity:"critical", description:"AWS secret access key" },
-        Rule { id:"secret_github_token_v1",entity:"GITHUB_TOKEN",        action:"remove",  tier:"security",  severity:"critical", description:"GitHub personal access token" },
-        Rule { id:"secret_openai_key_v1",  entity:"OPENAI_KEY",          action:"remove",  tier:"security",  severity:"critical", description:"OpenAI API key" },
-        Rule { id:"secret_anthropic_key_v1",entity:"ANTHROPIC_KEY",      action:"remove",  tier:"security",  severity:"critical", description:"Anthropic API key" },
-        Rule { id:"secret_generic_api_key_v1",entity:"GENERIC_API_KEY",  action:"remove",  tier:"security",  severity:"high",     description:"Generic API key in JSON" },
-        Rule { id:"secret_private_key_v1", entity:"PRIVATE_KEY",         action:"remove",  tier:"security",  severity:"critical", description:"PEM private key" },
-        Rule { id:"secret_jwt_v1",         entity:"JWT_TOKEN",           action:"hash",    tier:"security",  severity:"high",     description:"JSON Web Token" },
-        Rule { id:"secret_password_json_v1",entity:"PASSWORD_IN_JSON",   action:"remove",  tier:"security",  severity:"critical", description:"Password in JSON body" },
-        Rule { id:"sec_prompt_injection_v1",entity:"N/A",                action:"block",   tier:"security",  severity:"critical", description:"Prompt injection attempt" },
-        Rule { id:"sec_sysextract_v1",     entity:"N/A",                 action:"block",   tier:"security",  severity:"high",     description:"System prompt extraction attempt" },
-        Rule { id:"sec_ddl_mutation_v1",   entity:"N/A",                 action:"block",   tier:"security",  severity:"critical", description:"DDL mutation (DROP/TRUNCATE/ALTER TABLE)" },
-        Rule { id:"sec_delete_no_where_v1",entity:"N/A",                 action:"block",   tier:"security",  severity:"high",     description:"DELETE FROM without WHERE clause" },
-        Rule { id:"sec_ssrf_v1",           entity:"N/A",                 action:"block",   tier:"security",  severity:"critical", description:"SSRF: internal IP in HTTP argument" },
-        Rule { id:"sec_path_traversal_v1", entity:"N/A",                 action:"block",   tier:"security",  severity:"high",     description:"Path traversal sequence in file argument" },
-        Rule { id:"sec_encoded_evasion_v1",entity:"N/A",                 action:"block",   tier:"security",  severity:"critical", description:"Security pattern in encoded (evasion) content" },
-        Rule { id:"mcp_tool_acl_v1",       entity:"N/A",                 action:"block",   tier:"profile",   severity:"high",     description:"MCP tool not in org ACL" },
-        Rule { id:"token_quota_v1",        entity:"N/A",                 action:"block",   tier:"profile",   severity:"medium",   description:"Token quota exceeded" },
+        Rule {
+            id: "pii_ssn_v1",
+            entity: "US_SSN",
+            action: "remove",
+            tier: "profile",
+            severity: "high",
+            description: "US Social Security Number",
+        },
+        Rule {
+            id: "pii_credit_card_v1",
+            entity: "CREDIT_CARD",
+            action: "remove",
+            tier: "profile",
+            severity: "high",
+            description: "Credit/debit card (Luhn validated)",
+        },
+        Rule {
+            id: "pii_iban_v1",
+            entity: "IBAN_CODE",
+            action: "remove",
+            tier: "profile",
+            severity: "high",
+            description: "IBAN (mod-97 validated)",
+        },
+        Rule {
+            id: "pii_bank_account_v1",
+            entity: "BANK_ACCOUNT",
+            action: "remove",
+            tier: "profile",
+            severity: "high",
+            description: "Bank account number",
+        },
+        Rule {
+            id: "pii_passport_v1",
+            entity: "US_PASSPORT",
+            action: "remove",
+            tier: "profile",
+            severity: "high",
+            description: "US passport number",
+        },
+        Rule {
+            id: "pii_driver_license_v1",
+            entity: "US_DRIVER_LICENSE",
+            action: "mask",
+            tier: "profile",
+            severity: "medium",
+            description: "US driver's license",
+        },
+        Rule {
+            id: "pii_email_v1",
+            entity: "EMAIL_ADDRESS",
+            action: "mask",
+            tier: "profile",
+            severity: "medium",
+            description: "Email address",
+        },
+        Rule {
+            id: "pii_phone_v1",
+            entity: "PHONE_NUMBER",
+            action: "mask",
+            tier: "profile",
+            severity: "low",
+            description: "Phone number",
+        },
+        Rule {
+            id: "pii_ip_address_v1",
+            entity: "IP_ADDRESS_V4/V6",
+            action: "mask",
+            tier: "profile",
+            severity: "low",
+            description: "IP address",
+        },
+        Rule {
+            id: "pii_mrn_v1",
+            entity: "MEDICAL_RECORD_NUMBER",
+            action: "remove",
+            tier: "profile",
+            severity: "high",
+            description: "Medical record number",
+        },
+        Rule {
+            id: "pii_dob_v1",
+            entity: "DATE_OF_BIRTH",
+            action: "mask",
+            tier: "profile",
+            severity: "medium",
+            description: "Date of birth",
+        },
+        Rule {
+            id: "secret_block_v1",
+            entity: "ANY_SECRET",
+            action: "block",
+            tier: "security",
+            severity: "critical",
+            description: "Secret credential (umbrella)",
+        },
+        Rule {
+            id: "secret_aws_key_v1",
+            entity: "AWS_ACCESS_KEY",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "AWS access key ID",
+        },
+        Rule {
+            id: "secret_aws_secret_v1",
+            entity: "AWS_SECRET_KEY",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "AWS secret access key",
+        },
+        Rule {
+            id: "secret_github_token_v1",
+            entity: "GITHUB_TOKEN",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "GitHub personal access token",
+        },
+        Rule {
+            id: "secret_openai_key_v1",
+            entity: "OPENAI_KEY",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "OpenAI API key",
+        },
+        Rule {
+            id: "secret_anthropic_key_v1",
+            entity: "ANTHROPIC_KEY",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "Anthropic API key",
+        },
+        Rule {
+            id: "secret_generic_api_key_v1",
+            entity: "GENERIC_API_KEY",
+            action: "remove",
+            tier: "security",
+            severity: "high",
+            description: "Generic API key in JSON",
+        },
+        Rule {
+            id: "secret_private_key_v1",
+            entity: "PRIVATE_KEY",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "PEM private key",
+        },
+        Rule {
+            id: "secret_jwt_v1",
+            entity: "JWT_TOKEN",
+            action: "hash",
+            tier: "security",
+            severity: "high",
+            description: "JSON Web Token",
+        },
+        Rule {
+            id: "secret_password_json_v1",
+            entity: "PASSWORD_IN_JSON",
+            action: "remove",
+            tier: "security",
+            severity: "critical",
+            description: "Password in JSON body",
+        },
+        Rule {
+            id: "sec_prompt_injection_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "critical",
+            description: "Prompt injection attempt",
+        },
+        Rule {
+            id: "sec_sysextract_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "high",
+            description: "System prompt extraction attempt",
+        },
+        Rule {
+            id: "sec_ddl_mutation_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "critical",
+            description: "DDL mutation (DROP/TRUNCATE/ALTER TABLE)",
+        },
+        Rule {
+            id: "sec_delete_no_where_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "high",
+            description: "DELETE FROM without WHERE clause",
+        },
+        Rule {
+            id: "sec_ssrf_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "critical",
+            description: "SSRF: internal IP in HTTP argument",
+        },
+        Rule {
+            id: "sec_path_traversal_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "high",
+            description: "Path traversal sequence in file argument",
+        },
+        Rule {
+            id: "sec_encoded_evasion_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "security",
+            severity: "critical",
+            description: "Security pattern in encoded (evasion) content",
+        },
+        Rule {
+            id: "mcp_tool_acl_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "profile",
+            severity: "high",
+            description: "MCP tool not in org ACL",
+        },
+        Rule {
+            id: "token_quota_v1",
+            entity: "N/A",
+            action: "block",
+            tier: "profile",
+            severity: "medium",
+            description: "Token quota exceeded",
+        },
     ])
 }
 
@@ -223,13 +443,11 @@ pub struct KillSwitchStatus {
 /// Reads the live status from the proxy's real `KillSwitchState` via the
 /// [`KillSwitchControl`] adapter injected into [`DashboardState`] — never a
 /// fabricated snapshot.
-pub async fn get_kill_switch_status(
-    State(state): State<DashboardState>,
-) -> Json<KillSwitchStatus> {
+pub async fn get_kill_switch_status(State(state): State<DashboardState>) -> Json<KillSwitchStatus> {
     let view = state.kill_switch.status().await;
     Json(KillSwitchStatus {
-        global:    view.global,
-        by_org:    view.by_org,
+        global: view.global,
+        by_org: view.by_org,
         by_caller: view.by_caller,
     })
 }
@@ -238,7 +456,7 @@ pub async fn get_kill_switch_status(
 #[derive(Deserialize)]
 pub struct KillSwitchRequest {
     /// Scope of the kill-switch: `"global"`, `"org"`, or `"caller"`.
-    pub scope:  String,
+    pub scope: String,
     /// Human-readable reason (required for activation, audited).
     pub reason: Option<String>,
     /// Target ID for org- or caller-scoped switches.
@@ -311,7 +529,7 @@ pub struct ValidatePolicyRequest {
 #[derive(Serialize)]
 pub struct ValidationResult {
     /// Whether the policy is syntactically and semantically valid.
-    pub valid:  bool,
+    pub valid: bool,
     /// Validation error messages (empty when `valid` is `true`).
     pub errors: Vec<String>,
 }
@@ -323,11 +541,12 @@ pub struct ValidationResult {
 /// (`apiVersion`/`kind` constants, `metadata`/`spec` shape, field patterns
 /// and enums). This is YAML/structure validation — full Rego compilation is
 /// performed by the admin API's `compiler_service` (SPEC.md §6 admin-api).
-pub async fn validate_policy(
-    Json(req): Json<ValidatePolicyRequest>,
-) -> Json<ValidationResult> {
+pub async fn validate_policy(Json(req): Json<ValidatePolicyRequest>) -> Json<ValidationResult> {
     let errors = validate_policy_manifest(&req.yaml);
-    Json(ValidationResult { valid: errors.is_empty(), errors })
+    Json(ValidationResult {
+        valid: errors.is_empty(),
+        errors,
+    })
 }
 
 /// Structurally validate a policy manifest YAML document, returning a list of
@@ -358,9 +577,7 @@ fn validate_policy_manifest(yaml: &str) -> Vec<String> {
 
     match root.get("kind").and_then(serde_yaml::Value::as_str) {
         Some("PolicyManifest") => {}
-        Some(other) => errors.push(format!(
-            "kind must be 'PolicyManifest', found '{other}'."
-        )),
+        Some(other) => errors.push(format!("kind must be 'PolicyManifest', found '{other}'.")),
         None => errors.push("kind is required and must be 'PolicyManifest'.".into()),
     }
 
@@ -396,7 +613,10 @@ fn is_kebab_case_name(s: &str) -> bool {
 /// `^\d+\.\d+\.\d+$` — strict `MAJOR.MINOR.PATCH` semantic version.
 fn is_semver(s: &str) -> bool {
     let parts: Vec<&str> = s.split('.').collect();
-    parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn validate_metadata(meta: &serde_yaml::Mapping, errors: &mut Vec<String>) {
@@ -441,7 +661,12 @@ fn validate_metadata(meta: &serde_yaml::Mapping, errors: &mut Vec<String>) {
 fn validate_spec(spec: &serde_yaml::Mapping, errors: &mut Vec<String>) {
     if let Some(profile) = spec.get("profile") {
         const ALLOWED: &[&str] = &[
-            "hipaa", "pci-dss", "gdpr", "soc2", "financial-services", "internal-dev",
+            "hipaa",
+            "pci-dss",
+            "gdpr",
+            "soc2",
+            "financial-services",
+            "internal-dev",
         ];
         match profile.as_str() {
             Some(p) if ALLOWED.contains(&p) => {}
@@ -498,7 +723,10 @@ fn validate_spec(spec: &serde_yaml::Mapping, errors: &mut Vec<String>) {
 
     if let Some(restrictions) = spec.get("model_restrictions") {
         match restrictions.as_mapping() {
-            Some(r) => match r.get("allowed_models").and_then(serde_yaml::Value::as_sequence) {
+            Some(r) => match r
+                .get("allowed_models")
+                .and_then(serde_yaml::Value::as_sequence)
+            {
                 Some(models) if !models.is_empty() => {
                     if !models.iter().all(|m| m.as_str().is_some()) {
                         errors.push(
@@ -528,9 +756,9 @@ fn validate_spec(spec: &serde_yaml::Mapping, errors: &mut Vec<String>) {
                     Some(w) => errors.push(format!(
                         "spec.stream.sliding_window_size {w} must be between 64 and 4096."
                     )),
-                    None => errors.push(
-                        "spec.stream.sliding_window_size must be an integer.".into(),
-                    ),
+                    None => {
+                        errors.push("spec.stream.sliding_window_size must be an integer.".into());
+                    }
                 }
             }
         } else {
@@ -551,8 +779,9 @@ fn validate_spec(spec: &serde_yaml::Mapping, errors: &mut Vec<String>) {
                                 "spec.webhooks.events entry '{e}' must be one of: {}.",
                                 ALLOWED.join(", ")
                             )),
-                            None => errors
-                                .push("spec.webhooks.events entries must be strings.".into()),
+                            None => {
+                                errors.push("spec.webhooks.events entries must be strings.".into());
+                            }
                         }
                     }
                 }
@@ -564,9 +793,7 @@ fn validate_spec(spec: &serde_yaml::Mapping, errors: &mut Vec<String>) {
                             "spec.webhooks.min_severity '{s}' must be one of: {}.",
                             ALLOWED.join(", ")
                         )),
-                        None => errors.push(
-                            "spec.webhooks.min_severity must be a string.".into(),
-                        ),
+                        None => errors.push("spec.webhooks.min_severity must be a string.".into()),
                     }
                 }
             }

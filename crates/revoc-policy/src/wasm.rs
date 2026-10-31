@@ -114,17 +114,30 @@ impl WasmPolicyEngine {
     /// instantiation error, missing ABI export), logs a warning and falls
     /// back to the native engine — the proxy never refuses to start. Once a
     /// bundle loads successfully, [`Self::evaluate`] always runs it for real.
-    pub fn new(bundle_path: &str, cache: Arc<DecisionCache>, enforcement_mode: EnforcementMode) -> Self {
+    pub fn new(
+        bundle_path: &str,
+        cache: Arc<DecisionCache>,
+        enforcement_mode: EnforcementMode,
+    ) -> Self {
         let fallback = NativePolicyEngine::new(cache, enforcement_mode);
 
         if bundle_path.is_empty() {
-            return Self { bundle: None, fallback };
+            return Self {
+                bundle: None,
+                fallback,
+            };
         }
 
         match Self::load_bundle(bundle_path) {
             Ok(bundle) => {
-                tracing::info!(bundle_path, "OPA WASM bundle loaded — evaluating via wasmtime");
-                Self { bundle: Some(bundle), fallback }
+                tracing::info!(
+                    bundle_path,
+                    "OPA WASM bundle loaded — evaluating via wasmtime"
+                );
+                Self {
+                    bundle: Some(bundle),
+                    fallback,
+                }
             }
             Err(e) => {
                 warn!(
@@ -132,7 +145,10 @@ impl WasmPolicyEngine {
                     error = %e,
                     "Failed to load OPA WASM bundle — falling back to native policy engine"
                 );
-                Self { bundle: None, fallback }
+                Self {
+                    bundle: None,
+                    fallback,
+                }
             }
         }
     }
@@ -154,16 +170,21 @@ impl WasmPolicyEngine {
         let mut config = wasmtime::Config::new();
         config.cranelift_opt_level(OptLevel::Speed);
 
-        let engine = Engine::new(&config)
-            .map_err(|e| RevocError::Configuration(format!("Failed to create wasmtime engine: {e}")))?;
+        let engine = Engine::new(&config).map_err(|e| {
+            RevocError::Configuration(format!("Failed to create wasmtime engine: {e}"))
+        })?;
 
-        let module = Module::from_file(&engine, path)
-            .map_err(|e| RevocError::Configuration(format!("Failed to compile WASM module '{bundle_path}': {e}")))?;
+        let module = Module::from_file(&engine, path).map_err(|e| {
+            RevocError::Configuration(format!(
+                "Failed to compile WASM module '{bundle_path}': {e}"
+            ))
+        })?;
 
         let mut store: Store<()> = Store::new(&engine, ());
         // OPA WASM modules have no imports — the empty slice is typed explicitly.
-        let instance = Instance::new(&mut store, &module, &[] as &[Extern])
-            .map_err(|e| RevocError::Configuration(format!("Failed to instantiate WASM module: {e}")))?;
+        let instance = Instance::new(&mut store, &module, &[] as &[Extern]).map_err(|e| {
+            RevocError::Configuration(format!("Failed to instantiate WASM module: {e}"))
+        })?;
 
         let abi = Self::resolve_abi(&mut store, &instance)?;
 
@@ -175,7 +196,11 @@ impl WasmPolicyEngine {
         Ok(LoadedBundle {
             engine,
             module,
-            runtime: Mutex::new(BundleRuntime { store, abi, initial_heap_ptr }),
+            runtime: Mutex::new(BundleRuntime {
+                store,
+                abi,
+                initial_heap_ptr,
+            }),
         })
     }
 
@@ -188,53 +213,89 @@ impl WasmPolicyEngine {
     /// Each `get_typed_func` call is performed separately to avoid multiple
     /// simultaneous mutable borrows of `store` that Rust closures would incur.
     fn resolve_abi(store: &mut Store<()>, instance: &Instance) -> Result<OpaAbi, RevocError> {
-        let memory = instance
-            .get_memory(&mut *store, "memory")
-            .ok_or_else(|| RevocError::Configuration("WASM module has no exported `memory`".into()))?;
+        let memory = instance.get_memory(&mut *store, "memory").ok_or_else(|| {
+            RevocError::Configuration("WASM module has no exported `memory`".into())
+        })?;
 
         let opa_malloc = instance
             .get_typed_func::<i32, i32>(&mut *store, "opa_malloc")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_malloc`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!("missing/mismatched export `opa_malloc`: {e}"))
+            })?;
 
         let opa_free = instance
             .get_typed_func::<i32, ()>(&mut *store, "opa_free")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_free`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!("missing/mismatched export `opa_free`: {e}"))
+            })?;
 
         let opa_json_parse = instance
             .get_typed_func::<(i32, i32), i32>(&mut *store, "opa_json_parse")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_json_parse`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_json_parse`: {e}"
+                ))
+            })?;
 
         let opa_json_dump = instance
             .get_typed_func::<i32, i32>(&mut *store, "opa_json_dump")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_json_dump`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!("missing/mismatched export `opa_json_dump`: {e}"))
+            })?;
 
         let opa_heap_ptr_get = instance
             .get_typed_func::<(), i32>(&mut *store, "opa_heap_ptr_get")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_heap_ptr_get`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_heap_ptr_get`: {e}"
+                ))
+            })?;
 
         let opa_heap_ptr_set = instance
             .get_typed_func::<i32, ()>(&mut *store, "opa_heap_ptr_set")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_heap_ptr_set`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_heap_ptr_set`: {e}"
+                ))
+            })?;
 
         let opa_eval_ctx_new = instance
             .get_typed_func::<(), i32>(&mut *store, "opa_eval_ctx_new")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_eval_ctx_new`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_eval_ctx_new`: {e}"
+                ))
+            })?;
 
         let opa_eval_ctx_set_input = instance
             .get_typed_func::<(i32, i32), ()>(&mut *store, "opa_eval_ctx_set_input")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_eval_ctx_set_input`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_eval_ctx_set_input`: {e}"
+                ))
+            })?;
 
         let opa_eval_ctx_set_data = instance
             .get_typed_func::<(i32, i32), ()>(&mut *store, "opa_eval_ctx_set_data")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_eval_ctx_set_data`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_eval_ctx_set_data`: {e}"
+                ))
+            })?;
 
         let opa_eval_ctx_get_result = instance
             .get_typed_func::<i32, i32>(&mut *store, "opa_eval_ctx_get_result")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `opa_eval_ctx_get_result`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!(
+                    "missing/mismatched export `opa_eval_ctx_get_result`: {e}"
+                ))
+            })?;
 
         let eval = instance
             .get_typed_func::<i32, i32>(&mut *store, "eval")
-            .map_err(|e| RevocError::Configuration(format!("missing/mismatched export `eval`: {e}")))?;
+            .map_err(|e| {
+                RevocError::Configuration(format!("missing/mismatched export `eval`: {e}"))
+            })?;
 
         Ok(OpaAbi {
             memory,
@@ -256,19 +317,23 @@ impl WasmPolicyEngine {
     /// returning the guest address. The caller is responsible for freeing it
     /// with `opa_free` once the bytes have been parsed into an OPA value.
     fn write_bytes(rt: &mut BundleRuntime, bytes: &[u8]) -> Result<i32, RevocError> {
-        let byte_len = i32::try_from(bytes.len())
-            .map_err(|_| RevocError::PolicyEvaluation("input bytes too large for WASM ABI (>2 GiB)".into()))?;
+        let byte_len = i32::try_from(bytes.len()).map_err(|_| {
+            RevocError::PolicyEvaluation("input bytes too large for WASM ABI (>2 GiB)".into())
+        })?;
         let addr = rt
             .abi
             .opa_malloc
             .call(&mut rt.store, byte_len)
             .map_err(|e| RevocError::PolicyEvaluation(format!("opa_malloc failed: {e}")))?;
-        let addr_usize = usize::try_from(addr)
-            .map_err(|_| RevocError::PolicyEvaluation("WASM malloc returned negative address".into()))?;
+        let addr_usize = usize::try_from(addr).map_err(|_| {
+            RevocError::PolicyEvaluation("WASM malloc returned negative address".into())
+        })?;
         rt.abi
             .memory
             .write(&mut rt.store, addr_usize, bytes)
-            .map_err(|e| RevocError::PolicyEvaluation(format!("failed writing to WASM memory: {e}")))?;
+            .map_err(|e| {
+                RevocError::PolicyEvaluation(format!("failed writing to WASM memory: {e}"))
+            })?;
         Ok(addr)
     }
 
@@ -300,8 +365,9 @@ impl WasmPolicyEngine {
         // `memory.data` takes a shared borrow of the store; this is safe here
         // because the previous `call` to `opa_json_dump` has already completed.
         let data = rt.abi.memory.data(&rt.store);
-        let start = usize::try_from(str_addr)
-            .map_err(|_| RevocError::PolicyEvaluation("WASM dump returned negative address".into()))?;
+        let start = usize::try_from(str_addr).map_err(|_| {
+            RevocError::PolicyEvaluation("WASM dump returned negative address".into())
+        })?;
         let end = data[start..]
             .iter()
             .position(|&b| b == 0)
@@ -310,11 +376,13 @@ impl WasmPolicyEngine {
                 RevocError::PolicyEvaluation("opa_json_dump result is not NUL-terminated".into())
             })?;
 
-        let raw = std::str::from_utf8(&data[start..end])
-            .map_err(|e| RevocError::PolicyEvaluation(format!("opa_json_dump produced invalid UTF-8: {e}")))?;
+        let raw = std::str::from_utf8(&data[start..end]).map_err(|e| {
+            RevocError::PolicyEvaluation(format!("opa_json_dump produced invalid UTF-8: {e}"))
+        })?;
 
-        serde_json::from_str(raw)
-            .map_err(|e| RevocError::PolicyEvaluation(format!("failed to parse OPA result JSON: {e}")))
+        serde_json::from_str(raw).map_err(|e| {
+            RevocError::PolicyEvaluation(format!("failed to parse OPA result JSON: {e}"))
+        })
     }
 
     /// Run one full evaluation of the loaded bundle against `input`.
@@ -337,14 +405,16 @@ impl WasmPolicyEngine {
             .call(&mut rt.store, rt.initial_heap_ptr)
             .map_err(|e| RevocError::PolicyEvaluation(format!("opa_heap_ptr_set failed: {e}")))?;
 
-        let input_json = serde_json::to_vec(input)
-            .map_err(|e| RevocError::PolicyEvaluation(format!("failed to serialize PolicyInput: {e}")))?;
+        let input_json = serde_json::to_vec(input).map_err(|e| {
+            RevocError::PolicyEvaluation(format!("failed to serialize PolicyInput: {e}"))
+        })?;
         let data_json = b"{}";
 
         // Write input bytes → parse into OPA value → free raw bytes.
         let input_addr = Self::write_bytes(rt, &input_json)?;
-        let input_len = i32::try_from(input_json.len())
-            .map_err(|_| RevocError::PolicyEvaluation("policy input too large for WASM ABI (>2 GiB)".into()))?;
+        let input_len = i32::try_from(input_json.len()).map_err(|_| {
+            RevocError::PolicyEvaluation("policy input too large for WASM ABI (>2 GiB)".into())
+        })?;
         let input_value = Self::parse_json(rt, input_addr, input_len)?;
         rt.abi
             .opa_free
@@ -353,8 +423,9 @@ impl WasmPolicyEngine {
 
         // Write data bytes → parse into OPA value → free raw bytes.
         let data_addr = Self::write_bytes(rt, data_json)?;
-        let data_len = i32::try_from(data_json.len())
-            .map_err(|_| RevocError::PolicyEvaluation("data document too large for WASM ABI (>2 GiB)".into()))?;
+        let data_len = i32::try_from(data_json.len()).map_err(|_| {
+            RevocError::PolicyEvaluation("data document too large for WASM ABI (>2 GiB)".into())
+        })?;
         let data_value = Self::parse_json(rt, data_addr, data_len)?;
         rt.abi
             .opa_free
@@ -371,12 +442,16 @@ impl WasmPolicyEngine {
         rt.abi
             .opa_eval_ctx_set_input
             .call(&mut rt.store, (ctx_addr, input_value))
-            .map_err(|e| RevocError::PolicyEvaluation(format!("opa_eval_ctx_set_input failed: {e}")))?;
+            .map_err(|e| {
+                RevocError::PolicyEvaluation(format!("opa_eval_ctx_set_input failed: {e}"))
+            })?;
 
         rt.abi
             .opa_eval_ctx_set_data
             .call(&mut rt.store, (ctx_addr, data_value))
-            .map_err(|e| RevocError::PolicyEvaluation(format!("opa_eval_ctx_set_data failed: {e}")))?;
+            .map_err(|e| {
+                RevocError::PolicyEvaluation(format!("opa_eval_ctx_set_data failed: {e}"))
+            })?;
 
         // Run the policy.
         let rc = rt
@@ -396,7 +471,9 @@ impl WasmPolicyEngine {
             .abi
             .opa_eval_ctx_get_result
             .call(&mut rt.store, ctx_addr)
-            .map_err(|e| RevocError::PolicyEvaluation(format!("opa_eval_ctx_get_result failed: {e}")))?;
+            .map_err(|e| {
+                RevocError::PolicyEvaluation(format!("opa_eval_ctx_get_result failed: {e}"))
+            })?;
 
         let result_json = Self::dump_json(rt, result_addr)?;
         decode_decision(&result_json)
@@ -477,12 +554,20 @@ impl PolicyEngine for WasmPolicyEngine {
         if let Some(bundle) = &self.bundle {
             let mut new_store: Store<()> = Store::new(&bundle.engine, ());
             let new_instance = Instance::new(&mut new_store, &bundle.module, &[] as &[Extern])
-                .map_err(|e| RevocError::PolicyEvaluation(format!("WASM reload: re-instantiation failed: {e}")))?;
+                .map_err(|e| {
+                    RevocError::PolicyEvaluation(format!(
+                        "WASM reload: re-instantiation failed: {e}"
+                    ))
+                })?;
             let new_abi = WasmPolicyEngine::resolve_abi(&mut new_store, &new_instance)?;
             let new_heap_ptr = new_abi
                 .opa_heap_ptr_get
                 .call(&mut new_store, ())
-                .map_err(|e| RevocError::PolicyEvaluation(format!("WASM reload: opa_heap_ptr_get failed: {e}")))?;
+                .map_err(|e| {
+                    RevocError::PolicyEvaluation(format!(
+                        "WASM reload: opa_heap_ptr_get failed: {e}"
+                    ))
+                })?;
 
             let new_runtime = BundleRuntime {
                 store: new_store,
@@ -490,10 +575,9 @@ impl PolicyEngine for WasmPolicyEngine {
                 initial_heap_ptr: new_heap_ptr,
             };
 
-            let mut guard = bundle
-                .runtime
-                .lock()
-                .map_err(|_| RevocError::PolicyEvaluation("WASM reload: runtime mutex poisoned".into()))?;
+            let mut guard = bundle.runtime.lock().map_err(|_| {
+                RevocError::PolicyEvaluation("WASM reload: runtime mutex poisoned".into())
+            })?;
             *guard = new_runtime;
         }
 

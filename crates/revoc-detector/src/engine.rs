@@ -12,9 +12,7 @@ use revoc_core::{DetectionStage, Finding, InspectionInput, RevocError};
 use revoc_telemetry::RevocMetrics;
 
 use crate::{
-    http_plugin::HttpDetectionPlugin,
-    onnx_detector::OnnxDetector,
-    regex_detector::RegexDetector,
+    http_plugin::HttpDetectionPlugin, onnx_detector::OnnxDetector, regex_detector::RegexDetector,
 };
 
 /// Default per-detection timeout used by [`DetectionEngine::detect_with_timeout`].
@@ -123,6 +121,7 @@ impl DetectionEngine {
 
     /// Run detection with the default 8-second timeout.
     pub async fn detect_default_timeout(&self, input: &InspectionInput) -> Vec<Finding> {
-        self.detect_with_timeout(input, DEFAULT_DETECT_TIMEOUT).await
+        self.detect_with_timeout(input, DEFAULT_DETECT_TIMEOUT)
+            .await
     }
 }

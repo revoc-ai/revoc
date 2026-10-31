@@ -72,13 +72,7 @@ impl DetectionStage for HttpDetectionPlugin {
             raw_body: body_str,
         };
 
-        let resp = match self
-            .client
-            .post(&self.url)
-            .json(&payload)
-            .send()
-            .await
-        {
+        let resp = match self.client.post(&self.url).json(&payload).send().await {
             Ok(r) => r,
             Err(e) => {
                 warn!(plugin = %self.name, error = %e, "HTTP plugin request failed");

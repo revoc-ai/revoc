@@ -115,14 +115,20 @@ fn build_array_overlay() -> Option<String> {
     let mut root = serde_json::Map::new();
 
     if !providers.is_empty() {
-        let arr: Vec<serde_json::Value> = providers.into_values().map(serde_json::Value::Object).collect();
+        let arr: Vec<serde_json::Value> = providers
+            .into_values()
+            .map(serde_json::Value::Object)
+            .collect();
         let mut upstream = serde_json::Map::new();
         upstream.insert("providers".to_owned(), serde_json::Value::Array(arr));
         root.insert("upstream".to_owned(), serde_json::Value::Object(upstream));
     }
 
     if !servers.is_empty() {
-        let arr: Vec<serde_json::Value> = servers.into_values().map(serde_json::Value::Object).collect();
+        let arr: Vec<serde_json::Value> = servers
+            .into_values()
+            .map(serde_json::Value::Object)
+            .collect();
         let mut mcp = serde_json::Map::new();
         mcp.insert("trusted_servers".to_owned(), serde_json::Value::Array(arr));
         root.insert("mcp".to_owned(), serde_json::Value::Object(mcp));
@@ -296,12 +302,12 @@ mod tests {
         std::env::set_var(var, "test-key-value");
 
         let provider = crate::schema::ProviderConfig {
-            name:         "test".into(),
-            base_url:     "https://example.com".into(),
-            api_key_env:  var.into(),
+            name: "test".into(),
+            base_url: "https://example.com".into(),
+            api_key_env: var.into(),
             api_key_file: String::new(),
-            format:       "openai".into(),
-            default:      false,
+            format: "openai".into(),
+            default: false,
         };
 
         let key = provider.api_key().expect("should read from env");
@@ -317,12 +323,12 @@ mod tests {
         let path = tmp.path().to_str().unwrap().to_string();
 
         let provider = crate::schema::ProviderConfig {
-            name:         "test".into(),
-            base_url:     "https://example.com".into(),
-            api_key_env:  String::new(),
+            name: "test".into(),
+            base_url: "https://example.com".into(),
+            api_key_env: String::new(),
             api_key_file: path,
-            format:       "openai".into(),
-            default:      false,
+            format: "openai".into(),
+            default: false,
         };
 
         let key = provider.api_key().expect("should read from file");

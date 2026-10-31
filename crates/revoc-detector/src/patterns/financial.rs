@@ -10,19 +10,26 @@ use super::pii::{aba_routing_check, PiiPattern};
 
 static SWIFT_BIC_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // 6 alpha + 2 alphanumeric + optional 3 alphanumeric (location code)
-    Regex::new(r"\b[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: SWIFT_BIC_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: SWIFT_BIC_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static ROUTING_NUMBER_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // 9-digit ABA routing number — validated by aba_routing_check()
-    Regex::new(r"\b\d{9}\b").unwrap_or_else(|e| { eprintln!("FATAL: ROUTING_NUMBER_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"\b\d{9}\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: ROUTING_NUMBER_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static BANK_ACCOUNT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Account number near banking context keywords
-    Regex::new(r"(?i)(?:account|acct)[\s_#]?[:#]?\s*\d{8,17}")
-        .unwrap_or_else(|e| { eprintln!("FATAL: BANK_ACCOUNT_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?i)(?:account|acct)[\s_#]?[:#]?\s*\d{8,17}").unwrap_or_else(|e| {
+        eprintln!("FATAL: BANK_ACCOUNT_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 // ── Pattern catalogue ──────────────────────────────────────────────────────────

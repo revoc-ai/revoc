@@ -101,7 +101,10 @@ pub enum RevocError {
 impl RevocError {
     /// Returns `true` if this error is transient and the request may be retried.
     pub fn is_transient(&self) -> bool {
-        matches!(self, Self::PolicyEngineUnreachable(_) | Self::Upstream { .. })
+        matches!(
+            self,
+            Self::PolicyEngineUnreachable(_) | Self::Upstream { .. }
+        )
     }
 
     /// Maps this error to the appropriate HTTP response status code.
@@ -109,15 +112,15 @@ impl RevocError {
     /// Upstream errors pass through their original status unchanged.
     pub fn http_status(&self) -> u16 {
         match self {
-            Self::Authentication { .. }        => 401,
-            Self::RateLimitExceeded { .. }     => 429,
-            Self::BodyTooLarge { .. }          => 413,
-            Self::RequestParse(_)              => 400,
+            Self::Authentication { .. } => 401,
+            Self::RateLimitExceeded { .. } => 429,
+            Self::BodyTooLarge { .. } => 413,
+            Self::RequestParse(_) => 400,
             Self::PolicyEngineUnreachable(_)
             | Self::GovernanceDepthExceeded { .. }
-            | Self::KillSwitchActive { .. }    => 503,
-            Self::Upstream { status, .. }      => *status,
-            _                                  => 500,
+            | Self::KillSwitchActive { .. } => 503,
+            Self::Upstream { status, .. } => *status,
+            _ => 500,
         }
     }
 }

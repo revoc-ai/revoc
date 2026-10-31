@@ -12,8 +12,8 @@ use serde_json::json;
 use tracing::{debug, warn};
 
 use revoc_core::{
-    EnforcementMode, PolicyDecision, PolicyEngine, PolicyEngineMode, PolicyInput,
-    PolicyRuleTier, RevocError,
+    EnforcementMode, PolicyDecision, PolicyEngine, PolicyEngineMode, PolicyInput, PolicyRuleTier,
+    RevocError,
 };
 
 use crate::cache::DecisionCache;
@@ -54,11 +54,7 @@ impl SidecarPolicyEngine {
     /// Check whether the OPA server is reachable.
     pub async fn health_check(&self) -> bool {
         // Derive the base URL from the eval URL by stripping the path
-        let base = self
-            .opa_url
-            .split("/v1/")
-            .next()
-            .unwrap_or(&self.opa_url);
+        let base = self.opa_url.split("/v1/").next().unwrap_or(&self.opa_url);
         self.client
             .get(format!("{base}/health"))
             .send()
@@ -132,7 +128,10 @@ impl PolicyEngine for SidecarPolicyEngine {
             }
         };
 
-        let result_val = raw.get("result").cloned().unwrap_or(serde_json::Value::Null);
+        let result_val = raw
+            .get("result")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
 
         let mut decision: PolicyDecision = match serde_json::from_value(result_val) {
             Ok(d) => d,

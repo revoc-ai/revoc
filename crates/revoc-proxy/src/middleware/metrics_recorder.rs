@@ -1,6 +1,10 @@
 //! Request metrics recording middleware.
 
-use axum::{extract::{Request, State}, middleware::Next, response::Response};
+use axum::{
+    extract::{Request, State},
+    middleware::Next,
+    response::Response,
+};
 use std::time::Instant;
 
 use crate::app::AppState;

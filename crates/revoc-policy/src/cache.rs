@@ -65,7 +65,8 @@ impl DecisionCache {
                 self.store.remove(&oldest_key);
             }
         }
-        self.store.insert(key.to_owned(), (decision, Instant::now()));
+        self.store
+            .insert(key.to_owned(), (decision, Instant::now()));
     }
 
     /// Invalidate all cached entries (used on policy reload).

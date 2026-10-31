@@ -42,7 +42,10 @@ pub async fn auth_middleware(
                 ctx
             } else {
                 let trace_id = uuid::Uuid::now_v7().to_string();
-                let body = RevocErrorResponse::internal_error(&trace_id, &state.config.server.dashboard_base_url);
+                let body = RevocErrorResponse::internal_error(
+                    &trace_id,
+                    &state.config.server.dashboard_base_url,
+                );
                 return (StatusCode::UNAUTHORIZED, Json(body)).into_response();
             }
         }
@@ -51,14 +54,20 @@ pub async fn auth_middleware(
                 ctx
             } else {
                 let trace_id = uuid::Uuid::now_v7().to_string();
-                let body = RevocErrorResponse::internal_error(&trace_id, &state.config.server.dashboard_base_url);
+                let body = RevocErrorResponse::internal_error(
+                    &trace_id,
+                    &state.config.server.dashboard_base_url,
+                );
                 return (StatusCode::UNAUTHORIZED, Json(body)).into_response();
             }
         }
         other => {
             warn!(mode = other, "Unknown auth mode; defaulting to deny");
             let trace_id = uuid::Uuid::now_v7().to_string();
-            let body = RevocErrorResponse::internal_error(&trace_id, &state.config.server.dashboard_base_url);
+            let body = RevocErrorResponse::internal_error(
+                &trace_id,
+                &state.config.server.dashboard_base_url,
+            );
             return (StatusCode::UNAUTHORIZED, Json(body)).into_response();
         }
     };

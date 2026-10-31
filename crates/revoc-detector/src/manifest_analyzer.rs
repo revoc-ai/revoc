@@ -7,13 +7,40 @@ use revoc_core::Severity;
 
 /// Parameter names that indicate sensitive or dangerous tool capabilities.
 pub const DANGEROUS_PARAM_KEYWORDS: &[&str] = &[
-    "password", "passwd", "token", "secret", "api_key", "apikey",
-    "auth", "credential", "credentials", "private_key", "cert",
-    "bearer", "access_token", "refresh_token",
-    "cmd", "command", "eval", "exec", "shell", "script", "execute",
-    "subprocess", "sql", "query", "statement", "raw_sql",
-    "admin", "root", "sudo", "privilege",
-    "ssn", "credit_card", "card_number", "cvv",
+    "password",
+    "passwd",
+    "token",
+    "secret",
+    "api_key",
+    "apikey",
+    "auth",
+    "credential",
+    "credentials",
+    "private_key",
+    "cert",
+    "bearer",
+    "access_token",
+    "refresh_token",
+    "cmd",
+    "command",
+    "eval",
+    "exec",
+    "shell",
+    "script",
+    "execute",
+    "subprocess",
+    "sql",
+    "query",
+    "statement",
+    "raw_sql",
+    "admin",
+    "root",
+    "sudo",
+    "privilege",
+    "ssn",
+    "credit_card",
+    "card_number",
+    "cvv",
 ];
 
 /// Description substrings that suggest prompt-injection or privilege escalation.
@@ -65,7 +92,12 @@ pub fn analyze_tools_list(body: &[u8]) -> ManifestAnalysisResult {
 
     let value: serde_json::Value = match serde_json::from_slice(body) {
         Ok(v) => v,
-        Err(_) => return ManifestAnalysisResult { findings, tools_analyzed: 0 },
+        Err(_) => {
+            return ManifestAnalysisResult {
+                findings,
+                tools_analyzed: 0,
+            }
+        }
     };
 
     // Accept {"tools": [...]} or bare [...] arrays
@@ -74,7 +106,10 @@ pub fn analyze_tools_list(body: &[u8]) -> ManifestAnalysisResult {
         .and_then(|t| t.as_array())
         .or_else(|| value.as_array())
     else {
-        return ManifestAnalysisResult { findings, tools_analyzed: 0 };
+        return ManifestAnalysisResult {
+            findings,
+            tools_analyzed: 0,
+        };
     };
 
     let tools_analyzed = tools.len();
@@ -127,5 +162,8 @@ pub fn analyze_tools_list(body: &[u8]) -> ManifestAnalysisResult {
         }
     }
 
-    ManifestAnalysisResult { findings, tools_analyzed }
+    ManifestAnalysisResult {
+        findings,
+        tools_analyzed,
+    }
 }

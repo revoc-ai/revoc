@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use revoc_config::{Config, ProviderConfig};
 use revoc_core::RevocError;
 
-
 /// Routes requests to the configured upstream AI providers.
 #[derive(Clone, Debug)]
 pub struct UpstreamRouter {
@@ -35,14 +34,20 @@ impl UpstreamRouter {
             ));
         }
 
-        Ok(Self { providers, default_name })
+        Ok(Self {
+            providers,
+            default_name,
+        })
     }
 
     /// Select the provider for a request.
     ///
     /// Priority: `X-Revoc-Provider` header → default provider.
     pub fn route(&self, headers: &http::HeaderMap) -> Option<&ProviderConfig> {
-        if let Some(name) = headers.get("X-Revoc-Provider").and_then(|v| v.to_str().ok()) {
+        if let Some(name) = headers
+            .get("X-Revoc-Provider")
+            .and_then(|v| v.to_str().ok())
+        {
             if let Some(p) = self.providers.get(name) {
                 return Some(p);
             }
@@ -94,10 +99,8 @@ impl UpstreamRouter {
             "anthropic" => builder
                 .header("x-api-key", &api_key)
                 .header("anthropic-version", "2023-06-01"),
-            "azure" => builder
-                .header("api-key", &api_key),
-            _ => builder
-                .header("Authorization", format!("Bearer {api_key}")),
+            "azure" => builder.header("api-key", &api_key),
+            _ => builder.header("Authorization", format!("Bearer {api_key}")),
         };
 
         // D9: set outgoing depth header (Step 14 / Step 10)
@@ -126,10 +129,7 @@ pub fn validate_upstream_url(
         .map_err(|e| RevocError::Security(format!("Invalid upstream URL '{url}': {e}")))?;
 
     let origin = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
-    let port_suffix = parsed
-        .port()
-        .map(|p| format!(":{p}"))
-        .unwrap_or_default();
+    let port_suffix = parsed.port().map(|p| format!(":{p}")).unwrap_or_default();
     let full_origin = format!("{origin}{port_suffix}");
 
     let allowed = providers.values().any(|p| {

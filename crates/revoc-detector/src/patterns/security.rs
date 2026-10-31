@@ -10,14 +10,19 @@ use revoc_core::{FindingType, Severity};
 // ── Compiled patterns ──────────────────────────────────────────────────────────
 
 static DDL_MUTATION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?i)\b(DROP|TRUNCATE|ALTER)\s+TABLE\b")
-        .unwrap_or_else(|e| { eprintln!("FATAL: DDL_MUTATION_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?i)\b(DROP|TRUNCATE|ALTER)\s+TABLE\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: DDL_MUTATION_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 /// Matches `DELETE FROM` without checking for `WHERE` — the `regex_detector` performs
 /// the `WHERE` check post-match using `skip_if_after_contains`.
 static DELETE_FROM_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?i)\bDELETE\s+FROM\b").unwrap_or_else(|e| { eprintln!("FATAL: DELETE_FROM_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?i)\bDELETE\s+FROM\b").unwrap_or_else(|e| {
+        eprintln!("FATAL: DELETE_FROM_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static SSRF_INTERNAL_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
@@ -27,7 +32,10 @@ static SSRF_INTERNAL_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|
 });
 
 static PATH_TRAVERSAL_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?:\.\./|\.\.\\)+").unwrap_or_else(|e| { eprintln!("FATAL: PATH_TRAVERSAL_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?:\.\./|\.\.\\)+").unwrap_or_else(|e| {
+        eprintln!("FATAL: PATH_TRAVERSAL_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 static PROMPT_INJECTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
@@ -44,7 +52,10 @@ static SYS_EXTRACT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| 
 
 static MASS_DELETE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // DELETE FROM <table> without WHERE, terminated by ; or end-of-string
-    Regex::new(r"(?i)\bDELETE\s+FROM\s+\w+\s*(?:;|$)").unwrap_or_else(|e| { eprintln!("FATAL: MASS_DELETE_RE compile failed: {e}"); std::process::exit(1) })
+    Regex::new(r"(?i)\bDELETE\s+FROM\s+\w+\s*(?:;|$)").unwrap_or_else(|e| {
+        eprintln!("FATAL: MASS_DELETE_RE compile failed: {e}");
+        std::process::exit(1)
+    })
 });
 
 // ── Pattern catalogue ──────────────────────────────────────────────────────────

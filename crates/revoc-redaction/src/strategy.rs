@@ -107,13 +107,16 @@ mod tests {
     use revoc_core::{DetectionTier, Finding, FindingType, PiiEntityType, Severity};
 
     fn pii_finding(entity: PiiEntityType) -> Finding {
-        Finding::new(FindingType::Pii, Severity::High, DetectionTier::Regex)
-            .with_pii(entity)
+        Finding::new(FindingType::Pii, Severity::High, DetectionTier::Regex).with_pii(entity)
     }
 
     fn secret_finding(entity: PiiEntityType) -> Finding {
-        Finding::new(FindingType::SecretExposure, Severity::Critical, DetectionTier::Regex)
-            .with_pii(entity)
+        Finding::new(
+            FindingType::SecretExposure,
+            Severity::Critical,
+            DetectionTier::Regex,
+        )
+        .with_pii(entity)
     }
 
     #[test]
@@ -143,15 +146,26 @@ mod tests {
     #[test]
     fn test_strategy_generic_secret_is_remove() {
         // SecretExposure with no specific entity → Remove
-        let f = Finding::new(FindingType::SecretExposure, Severity::Critical, DetectionTier::Regex);
+        let f = Finding::new(
+            FindingType::SecretExposure,
+            Severity::Critical,
+            DetectionTier::Regex,
+        );
         assert_eq!(strategy_for(&f), RedactionStrategy::Remove);
     }
 
     #[test]
     fn test_mask_apply_contains_entity_name() {
-        let result = RedactionStrategy::Mask.apply("test@example.com", &PiiEntityType::EmailAddress);
-        assert!(result.contains("EMAIL_ADDRESS"), "Mask must include entity type");
-        assert!(!result.contains("test@"), "Mask must not include original value");
+        let result =
+            RedactionStrategy::Mask.apply("test@example.com", &PiiEntityType::EmailAddress);
+        assert!(
+            result.contains("EMAIL_ADDRESS"),
+            "Mask must include entity type"
+        );
+        assert!(
+            !result.contains("test@"),
+            "Mask must not include original value"
+        );
     }
 
     #[test]
@@ -159,12 +173,18 @@ mod tests {
         let a = RedactionStrategy::Hash.apply("sk-secret", &PiiEntityType::OpenaiKey);
         let b = RedactionStrategy::Hash.apply("sk-secret", &PiiEntityType::OpenaiKey);
         assert_eq!(a, b, "Hash must be deterministic");
-        assert!(a.starts_with("[hash:"), "Hash output must start with [hash:");
+        assert!(
+            a.starts_with("[hash:"),
+            "Hash output must start with [hash:"
+        );
     }
 
     #[test]
     fn test_remove_apply_is_empty() {
         let result = RedactionStrategy::Remove.apply("123-45-6789", &PiiEntityType::UsSsn);
-        assert!(result.is_empty(), "Remove strategy must produce empty string");
+        assert!(
+            result.is_empty(),
+            "Remove strategy must produce empty string"
+        );
     }
 }

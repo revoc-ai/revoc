@@ -239,19 +239,28 @@ fn test_http_status_kill_switch() {
     let e1 = RevocError::GovernanceDepthExceeded { depth: 10 };
     assert_eq!(e1.http_status(), 503);
 
-    let e2 = RevocError::KillSwitchActive { scope: "global".into() };
+    let e2 = RevocError::KillSwitchActive {
+        scope: "global".into(),
+    };
     assert_eq!(e2.http_status(), 503);
 }
 
 #[test]
 fn test_http_status_auth() {
-    let e1 = RevocError::Authentication { reason: "invalid key".into() };
+    let e1 = RevocError::Authentication {
+        reason: "invalid key".into(),
+    };
     assert_eq!(e1.http_status(), 401);
 
-    let e2 = RevocError::RateLimitExceeded { caller_id: "svc-a".into() };
+    let e2 = RevocError::RateLimitExceeded {
+        caller_id: "svc-a".into(),
+    };
     assert_eq!(e2.http_status(), 429);
 
-    let e3 = RevocError::BodyTooLarge { size: 20_000_000, max: 10_485_760 };
+    let e3 = RevocError::BodyTooLarge {
+        size: 20_000_000,
+        max: 10_485_760,
+    };
     assert_eq!(e3.http_status(), 413);
 }
 
@@ -265,7 +274,10 @@ fn test_pii_entity_display() {
     assert_eq!(PiiEntityType::IpAddressV4.to_string(), "IP_ADDRESS_V4");
     assert_eq!(PiiEntityType::AwsAccessKey.to_string(), "AWS_ACCESS_KEY");
     assert_eq!(PiiEntityType::JwtToken.to_string(), "JWT_TOKEN");
-    assert_eq!(PiiEntityType::Custom("MY_ENTITY".into()).to_string(), "MY_ENTITY");
+    assert_eq!(
+        PiiEntityType::Custom("MY_ENTITY".into()).to_string(),
+        "MY_ENTITY"
+    );
 }
 
 // ── SessionState exfiltration heuristic ──────────────────────────────────────
@@ -313,9 +325,13 @@ fn test_session_state_exfil_partial() {
 
 #[test]
 fn test_serde_roundtrip_finding() {
-    let f = Finding::new(FindingType::SecretExposure, Severity::Critical, DetectionTier::Regex)
-        .with_confidence(0.99)
-        .with_pii(PiiEntityType::AwsAccessKey);
+    let f = Finding::new(
+        FindingType::SecretExposure,
+        Severity::Critical,
+        DetectionTier::Regex,
+    )
+    .with_confidence(0.99)
+    .with_pii(PiiEntityType::AwsAccessKey);
 
     let json = serde_json::to_string(&f).expect("serialize");
     let back: Finding = serde_json::from_str(&json).expect("deserialize");
@@ -348,8 +364,12 @@ fn test_text_span_value_not_in_json() {
         // This secret value must NEVER appear in serialized output
         value: Some("sk-supersecret".into()),
     };
-    let f = Finding::new(FindingType::SecretExposure, Severity::Critical, DetectionTier::Regex)
-        .with_span(span);
+    let f = Finding::new(
+        FindingType::SecretExposure,
+        Severity::Critical,
+        DetectionTier::Regex,
+    )
+    .with_span(span);
 
     let json = serde_json::to_string(&f).expect("serialize");
 
