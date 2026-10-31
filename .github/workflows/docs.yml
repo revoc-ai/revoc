@@ -48,7 +48,7 @@ jobs:
 
   deploy:
     name: GitHub Pages / deploy
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
