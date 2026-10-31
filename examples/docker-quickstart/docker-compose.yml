@@ -1,0 +1,45 @@
+# REVOC docker-quickstart — single container, mock mode, zero external dependencies.
+#
+# This is the fastest way to see REVOC governance in action without a real
+# OpenAI key or any infrastructure. The proxy returns a synthetic response for
+# every request so all 30 governance rules run against your payloads.
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up -d
+#   bash demo.sh
+
+name: revoc-quickstart
+
+services:
+  revoc:
+    image: ghcr.io/revoc-ai/revoc:latest
+    container_name: revoc-quickstart
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # AI traffic — point your OpenAI client here
+      - "3000:3000"   # Dashboard SPA + SSE live feed
+      - "8081:8081"   # Internal admin/emergency API
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Mock mode: synthetic response returned, no upstream call made.
+      # Remove or set to false to forward to a real provider.
+      REVOC_UPSTREAM__MOCK_MODE: "true"
+      # No auth required in this quickstart. Never use in production.
+      REVOC_AUTH__MODE: none
+      # SQLite audit log inside the container (persisted to named volume).
+      REVOC_STORAGE__BACKEND: sqlite
+      REVOC_STORAGE__SQLITE_PATH: /data/revoc-audit.db
+    volumes:
+      - revoc-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  revoc-data:

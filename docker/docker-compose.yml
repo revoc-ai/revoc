@@ -1,0 +1,110 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC — Tier 2 (team) deployment.
+#
+#   make up        → docker compose -f docker/docker-compose.yml up -d
+#   make up-obs    → adds docker-compose.observability.yml on top (opt-in)
+#
+# Four services exactly: revoc-proxy, postgres, redis, and (commented out by
+# default) otel-collector. Run from the repository root so REVOC_POLICY_DIR
+# bind-mounts and `env_file: ../.env` resolve correctly.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: revoc
+
+services:
+  revoc-proxy:
+    image: ${IMAGE_PROXY:-ghcr.io/revoc-ai/revoc:latest}
+    build:
+      context: ..
+      dockerfile: crates/revoc-proxy/Dockerfile
+    container_name: revoc-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # AI traffic (OpenAI/Anthropic-compatible proxy)
+      - "3000:3000"   # Dashboard SPA + SSE live feed
+      - "9090:9090"   # Prometheus metrics
+      - "8081:8081"   # Internal emergency/admin API — DO NOT expose publicly
+    env_file:
+      - ../.env
+    environment:
+      REVOC_STORAGE__BACKEND: postgres
+      DATABASE_URL: postgres://revoc:revoc@postgres:5432/revoc
+      REDIS_URL: redis://redis:6379
+      REVOC_CACHE__BACKEND: redis
+    volumes:
+      - revoc-policies:/policies
+    networks:
+      - revoc-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: revoc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: revoc
+      POSTGRES_PASSWORD: revoc
+      POSTGRES_DB: revoc
+    volumes:
+      - revoc-pgdata:/var/lib/postgresql/data
+    networks:
+      - revoc-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U revoc -d revoc"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: revoc-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - revoc-redis-data:/data
+    networks:
+      - revoc-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Optional: OTel collector (off by default) ───────────────────────────────
+  # Uncomment to forward traces/metrics to the observability stack
+  # (docker-compose.observability.yml) without enabling the full Jaeger /
+  # Prometheus / Grafana suite.
+  #
+  # otel-collector:
+  #   image: otel/opentelemetry-collector-contrib:0.110.0
+  #   container_name: revoc-otel-collector
+  #   restart: unless-stopped
+  #   command: ["--config=/etc/otel-collector-config.yaml"]
+  #   volumes:
+  #     - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+  #   ports:
+  #     - "4317:4317"   # OTLP gRPC
+  #     - "4318:4318"   # OTLP HTTP
+  #   networks:
+  #     - revoc-net
+
+networks:
+  revoc-net:
+    driver: bridge
+
+volumes:
+  revoc-pgdata:
+  revoc-redis-data:
+  revoc-policies:

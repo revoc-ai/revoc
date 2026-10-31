@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "revoc.proxy.fullname" . }}
+  labels:
+    {{- include "revoc.proxy.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.proxy.service.type }}
+  selector:
+    {{- include "revoc.proxy.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: proxy
+      port: {{ .Values.proxy.ports.proxy }}
+      targetPort: proxy
+      protocol: TCP
+    - name: dashboard
+      port: {{ .Values.proxy.ports.dashboard }}
+      targetPort: dashboard
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.proxy.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+---
+# Internal-only service exposing the emergency/kill-switch admin API (port 8081).
+# MUST NOT be exposed via Ingress — cluster-internal access only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "revoc.proxy.fullname" . }}-internal
+  labels:
+    {{- include "revoc.proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-internal
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "revoc.proxy.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: internal
+      port: {{ .Values.proxy.ports.internal }}
+      targetPort: internal
+      protocol: TCP

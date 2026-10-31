@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC — local development overlay.
+#
+#   make up-dev   → docker compose -f docker/docker-compose.dev.yml up -d
+#
+# Mounts source for fast iteration, runs in mock-upstream mode (no API keys
+# required), uses SQLite (no Postgres/Redis dependency), disables auth, and
+# switches logging to human-readable "pretty" format.
+#
+# This file is a STANDALONE stack — it does not extend docker-compose.yml —
+# so `revoc-proxy` is the only service it needs to run end-to-end locally.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: revoc-dev
+
+services:
+  revoc-proxy:
+    build:
+      context: ..
+      dockerfile: crates/revoc-proxy/Dockerfile
+    container_name: revoc-proxy-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "3000:3000"
+      - "9090:9090"
+      - "8081:8081"
+    environment:
+      REVOC_AUTH__MODE: none
+      REVOC_UPSTREAM__MOCK_MODE: "true"
+      REVOC_LOG_FORMAT: pretty
+      REVOC_POLICY__ENGINE: native
+      REVOC_STORAGE__BACKEND: sqlite
+      REVOC_SERVER__ENVIRONMENT: development
+    volumes:
+      # Bind-mount source so `cargo watch` style rebuilds pick up changes
+      # without rebuilding the image. The compiled binary still runs from
+      # the image; this primarily mounts policies + configs for live editing.
+      - ../configs:/configs:ro
+      - ../policies:/policies:ro
+      - revoc-dev-sqlite:/data
+    networks:
+      - revoc-dev-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  revoc-dev-net:
+    driver: bridge
+
+volumes:
+  revoc-dev-sqlite:

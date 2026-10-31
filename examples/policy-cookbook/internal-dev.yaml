@@ -1,0 +1,93 @@
+# REVOC Policy — Internal Developer Tooling
+#
+# Permissive policy for internal AI developer tools (copilots, code assistants).
+# Security rules always remain active (Tier 3 — cannot be overridden).
+# PII rules are in shadow mode: observed and logged but not enforced.
+# Higher token quotas for productivity workloads.
+#
+# Apply with:
+#   curl -X POST http://localhost:8081/internal/policies \
+#     -H "Content-Type: application/yaml" \
+#     -H "X-Admin-Key: $REVOC_ADMIN_KEY" \
+#     --data-binary @internal-dev.yaml
+
+name: internal-dev
+version: "1.0"
+environment: development
+profile: internal-dev
+description: >
+  Permissive policy for internal developer AI tools. Security rules (prompt injection,
+  DDL mutations, SSRF, path traversal, secret blocking) remain enforced. PII detection
+  is in shadow mode: all findings are logged and visible in the dashboard, but traffic
+  is not blocked or redacted. Generous token quota for development velocity.
+
+rules:
+  # PII rules in shadow mode — observe without blocking
+  # Findings appear in the dashboard as "shadow-redact" events
+  - rule_id: pii_email_v1
+    enforcement_mode: shadow
+    description: >
+      Observe email addresses but do not redact. Shadow mode: logged, not enforced.
+      Useful for seeing which internal tools handle employee PII before enforcing.
+
+  - rule_id: pii_phone_v1
+    enforcement_mode: shadow
+    description: Observe phone numbers in shadow mode.
+
+  - rule_id: pii_ip_address_v1
+    enforcement_mode: shadow
+    description: Observe IP addresses in shadow mode.
+
+  - rule_id: pii_ssn_v1
+    enforcement_mode: shadow
+    description: >
+      Observe SSNs in shadow mode. If SSNs appear frequently in internal dev tools,
+      this indicates a data hygiene problem worth investigating before prod enforcement.
+
+  - rule_id: pii_credit_card_v1
+    enforcement_mode: shadow
+    description: Observe credit card numbers in shadow mode.
+
+  # Security rules — always enforced regardless of environment
+  # Note: sec_* rules are Tier 3 and cannot be put in shadow mode via policy.
+  # They are listed here for documentation only — enforcement is not configurable.
+  - rule_id: sec_prompt_injection_v1
+    action: block
+    enforcement_mode: enforce
+    description: Enforce prompt injection detection in all environments.
+
+  - rule_id: sec_ddl_mutation_v1
+    action: block
+    enforcement_mode: enforce
+    description: Enforce DDL mutation blocking in all environments.
+
+  - rule_id: sec_ssrf_v1
+    action: block
+    enforcement_mode: enforce
+    description: Enforce SSRF blocking in all environments.
+
+  - rule_id: sec_path_traversal_v1
+    action: block
+    enforcement_mode: enforce
+    description: Enforce path traversal blocking in all environments.
+
+  - rule_id: secret_block_v1
+    action: block
+    enforcement_mode: enforce
+    description: >
+      Block secrets even in development. Developer tools frequently handle code
+      containing API keys — these must never reach the LLM.
+
+  # Generous token quota for development velocity
+  - rule_id: token_quota_v1
+    action: block
+    enforcement_mode: enforce
+    parameters:
+      max_tokens_per_hour: 2000000
+      max_tokens_per_day: 20000000
+    description: >
+      Higher token quota for developer productivity. Adjust per team budget.
+      Consider per-caller quotas via the admin API for very active teams.
+
+# Audit retention — shorter for dev (no compliance requirement)
+audit_retention_days: 30

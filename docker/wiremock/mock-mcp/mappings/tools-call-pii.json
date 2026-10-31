@@ -1,0 +1,27 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/call')]" },
+      { "matchesJsonPath": "$[?(@.params.name == 'lookup_customer')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "jsonrpc": "2.0",
+      "id": "1",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Customer record: jane.doe@example.com, SSN 123-45-6789."
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,78 @@
+# REVOC Policy Manifest — HIPAA Baseline
+# ---------------------------------------------------------------------------
+# Use this manifest for workloads that process Protected Health Information
+# (PHI) under HIPAA. Activates the hipaa compliance profile and configures
+# the engine in enforce mode with fail-closed behaviour.
+#
+# Apply via:
+#   revoc-gateway policy apply --file hipaa-baseline.yaml --env production
+#
+# Note: the top-level key (hipaa_baseline) is required so that OPA can load
+# all example files from the same directory without key conflicts.
+# ---------------------------------------------------------------------------
+
+hipaa_baseline:
+  apiVersion: revoc.io/v1
+  kind: PolicyManifest
+  metadata:
+    name: hipaa-baseline
+    version: "1.0.0"
+    description: "HIPAA baseline — PHI redaction and restricted tool access"
+    environment: production
+    org_id: "${ORG_ID}"
+
+  spec:
+    profile: hipaa
+
+    enforcement:
+      mode: enforce
+      fail_open: false
+
+    governance:
+      max_depth: 10
+
+    detection:
+      normalize_before_scan: true
+      regex_enabled: true
+      onnx_enabled: false
+      decode_base64_args: true
+      decode_url_encoded_args: true
+
+    model_restrictions:
+      allowed_models:
+        - "gpt-4o"
+        - "gpt-4o-mini"
+        - "claude-3-5-sonnet"
+
+    mcp_tool_overrides:
+      send_email:
+        action: block
+        allowed_teams: []
+      execute_shell:
+        action: block
+        blocked_environments:
+          - development
+          - staging
+          - production
+
+    quotas:
+      default:
+        tokens_per_request: 50000
+        tokens_per_minute: 200000
+
+    upstream:
+      provider: openai
+
+    audit:
+      enabled: true
+      retention_days: 365
+      include_findings: true
+      include_model: true
+
+    webhooks:
+      enabled: true
+      events:
+        - block
+        - quota_exceeded
+      min_severity: high
+      cooldown_minutes: 1

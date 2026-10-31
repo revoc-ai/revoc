@@ -1,0 +1,50 @@
+REVOC — Runtime Execution Validation & Observability Control
+Copyright 2024 REVOC Contributors
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+──────────────────────────────────────────────────────────────────────────────
+Third-Party Dependency Notices
+──────────────────────────────────────────────────────────────────────────────
+
+This software incorporates components from third-party open-source projects.
+The full list of dependencies and their licenses can be regenerated at any time
+by running:
+
+    make notice
+
+or directly:
+
+    cargo about generate about.hbs > NOTICE
+
+The above command requires cargo-about (https://github.com/EmbarkStudios/cargo-about):
+
+    cargo install cargo-about
+
+──────────────────────────────────────────────────────────────────────────────
+Key Dependencies (illustrative — run `make notice` for the complete list)
+──────────────────────────────────────────────────────────────────────────────
+
+tokio — MIT License — https://github.com/tokio-rs/tokio
+axum — MIT License — https://github.com/tokio-rs/axum
+serde — MIT OR Apache-2.0 — https://github.com/serde-rs/serde
+reqwest — MIT OR Apache-2.0 — https://github.com/seanmonstar/reqwest
+hyper — MIT — https://github.com/hyperium/hyper
+tracing — MIT — https://github.com/tokio-rs/tracing
+sqlx — MIT OR Apache-2.0 — https://github.com/launchbadge/sqlx
+regex — MIT OR Apache-2.0 — https://github.com/rust-lang/regex
+unicode-normalization — MIT OR Apache-2.0 — https://github.com/unicode-rs/unicode-normalization
+uuid — Apache-2.0 OR MIT — https://github.com/uuid-rs/uuid
+chrono — MIT OR Apache-2.0 — https://github.com/chronotope/chrono
+dashmap — MIT — https://github.com/xacrimon/dashmap
+subtle — BSD-3-Clause — https://github.com/dalek-cryptography/subtle
+zeroize — Apache-2.0 OR MIT — https://github.com/RustCrypto/utils
+wasmtime — Apache-2.0 — https://github.com/bytecodealliance/wasmtime
+clap — MIT OR Apache-2.0 — https://github.com/clap-rs/clap
+tower — MIT — https://github.com/tower-rs/tower
+prometheus — Apache-2.0 — https://github.com/tikv/rust-prometheus
+opentelemetry — Apache-2.0 — https://github.com/open-telemetry/opentelemetry-rust
+fancy-regex — MIT — https://github.com/fancy-regex/fancy-regex

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "revoc.fullname" . }}-policies
+  labels:
+    {{- include "revoc.labels" . | nindent 4 }}
+data:
+  README.md: |
+    REVOC default and profile policies are embedded in the proxy binary.
+    This ConfigMap is the mount point for operators who wish to override
+    the default Rego bundle via a custom policy directory.
+
+    Mount this ConfigMap at /policies/custom and set:
+      REVOC_POLICY__WASM_BUNDLE_PATH or operate the OPA sidecar
+      with --set policies.path=/policies/custom
+
+    Do not place secrets or PII values in policy files — they are
+    version-controlled and may be visible to anyone with chart access.

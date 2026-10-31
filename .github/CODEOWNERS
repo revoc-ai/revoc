@@ -1,0 +1,64 @@
+# CODEOWNERS — REVOC
+# Reviews are required from the listed owners for changes to these paths.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Order matters: later patterns take precedence over earlier ones.
+
+# Default owners for everything in the repo
+*                                   @revoc-ai/maintainers
+
+# Rust workspace — core governance pipeline
+/crates/revoc-core/                 @revoc-ai/rust-core
+/crates/revoc-config/               @revoc-ai/rust-core
+/crates/revoc-telemetry/            @revoc-ai/rust-core
+/crates/revoc-detector/             @revoc-ai/detection
+/crates/revoc-pipeline/             @revoc-ai/detection
+/crates/revoc-policy/               @revoc-ai/policy
+/crates/revoc-redaction/            @revoc-ai/detection
+/crates/revoc-dashboard/            @revoc-ai/dashboard
+/crates/revoc-proxy/                @revoc-ai/rust-core @revoc-ai/security
+
+# Security-critical proxy modules require security-team review
+/crates/revoc-proxy/src/kill_switch.rs   @revoc-ai/security
+/crates/revoc-proxy/src/depth.rs         @revoc-ai/security
+/crates/revoc-proxy/src/middleware/      @revoc-ai/security
+/crates/revoc-proxy/src/handlers/emergency.rs @revoc-ai/security
+
+# Detection patterns and normalization — security-sensitive, require detection-team review
+/crates/revoc-detector/src/normalization.rs   @revoc-ai/detection @revoc-ai/security
+/crates/revoc-detector/src/patterns/          @revoc-ai/detection @revoc-ai/security
+/crates/revoc-detector/src/manifest_analyzer.rs @revoc-ai/detection @revoc-ai/security
+
+# Policy bundles — Rego and conflict resolution
+/policies/                           @revoc-ai/policy
+/crates/revoc-policy/src/conflict.rs @revoc-ai/policy @revoc-ai/security
+
+# Admin API
+/admin-api/                          @revoc-ai/admin-api
+/admin-api/app/core/security.py      @revoc-ai/admin-api @revoc-ai/security
+/admin-api/alembic/                  @revoc-ai/admin-api
+
+# SDKs
+/sdk/python/                         @revoc-ai/sdk
+/sdk/node/                           @revoc-ai/sdk
+
+# Deployment & infrastructure
+/helm/                               @revoc-ai/infra
+/docker/                             @revoc-ai/infra
+/configs/                            @revoc-ai/infra
+/Makefile                            @revoc-ai/infra
+
+# CI/CD and repo governance
+/.github/                            @revoc-ai/maintainers
+/CLAUDE.md                           @revoc-ai/maintainers
+/SPEC.md                             @revoc-ai/maintainers
+/SECURITY.md                         @revoc-ai/security
+/GOVERNANCE.md                       @revoc-ai/maintainers
+
+# Documentation
+/docs/                               @revoc-ai/docs
+/examples/                           @revoc-ai/docs
+
+# Benchmarks and fuzzing — performance/security non-negotiables
+/benches/                            @revoc-ai/rust-core
+/fuzz/                               @revoc-ai/security

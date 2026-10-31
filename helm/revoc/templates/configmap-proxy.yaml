@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "revoc.proxy.fullname" . }}-config
+  labels:
+    {{- include "revoc.proxy.labels" . | nindent 4 }}
+data:
+  REVOC_SERVER__HOST: "0.0.0.0"
+  REVOC_SERVER__PORT: {{ .Values.proxy.ports.proxy | quote }}
+  REVOC_SERVER__DASHBOARD_PORT: {{ .Values.proxy.ports.dashboard | quote }}
+  REVOC_SERVER__ENVIRONMENT: "production"
+  REVOC_SERVER__DASHBOARD_BASE_URL: {{ .Values.dashboard.baseUrl | quote }}
+
+  REVOC_GOVERNANCE__MAX_DEPTH: {{ .Values.governance.maxDepth | quote }}
+  REVOC_GOVERNANCE__DEPTH_EXCEEDED_ACTION: {{ .Values.governance.depthExceededAction | quote }}
+
+  REVOC_KILL_SWITCH__ENABLED: {{ .Values.killSwitch.enabled | quote }}
+  REVOC_KILL_SWITCH__REDIS_CHANNEL: {{ .Values.killSwitch.redisChannel | quote }}
+  REVOC_KILL_SWITCH__ON_REDIS_UNAVAILABLE: {{ .Values.killSwitch.onRedisUnavailable | quote }}
+
+  REVOC_DETECTION__NORMALIZE_BEFORE_SCAN: {{ .Values.detection.normalizeBeforeScan | quote }}
+  REVOC_DETECTION__REGEX_ENABLED: {{ .Values.detection.regexEnabled | quote }}
+  REVOC_DETECTION__ONNX_ENABLED: {{ .Values.detection.onnxEnabled | quote }}
+  REVOC_DETECTION__PRESIDIO_ENABLED: {{ .Values.detection.presidioEnabled | quote }}
+
+  REVOC_MCP__ANALYZE_TOOL_MANIFESTS: {{ .Values.mcp.analyzeToolManifests | quote }}
+  REVOC_MCP__AUTO_DISABLE_DANGEROUS_TOOLS: {{ .Values.mcp.autoDisableDangerousTools | quote }}
+  REVOC_MCP__DANGEROUS_TOOL_ACTION: {{ .Values.mcp.dangerousToolAction | quote }}
+
+  REVOC_POLICY__ENGINE: {{ .Values.policy.engine | quote }}
+  REVOC_POLICY__ENFORCEMENT_MODE: {{ .Values.policy.enforcementMode | quote }}
+  REVOC_POLICY__FAIL_OPEN: {{ .Values.policy.failOpen | quote }}
+
+  REVOC_DASHBOARD__AUTH_MODE: {{ .Values.dashboard.authMode | quote }}
+
+  {{- if .Values.postgresql.enabled }}
+  REVOC_STORAGE__BACKEND: "postgres"
+  {{- end }}
+  {{- if .Values.redis.enabled }}
+  REVOC_CACHE__BACKEND: "redis"
+  {{- end }}
+
+  REVOC_TELEMETRY__OTLP_ENDPOINT: {{ .Values.telemetry.otlpEndpoint | quote }}
+  REVOC_TELEMETRY__SAMPLE_RATE: {{ .Values.telemetry.sampleRate | quote }}
+  REVOC_TELEMETRY__LOG_LEVEL: {{ .Values.telemetry.logLevel | quote }}
+  REVOC_TELEMETRY__LOG_FORMAT: {{ .Values.telemetry.logFormat | quote }}
+  REVOC_TELEMETRY__PROMETHEUS_PORT: {{ .Values.proxy.ports.metrics | quote }}

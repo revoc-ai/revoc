@@ -1,0 +1,75 @@
+[package]
+name        = "revoc-detector"
+version     = "0.1.0"
+edition     = "2021"
+description = "Detection engine: normalization, regex, ONNX, manifest analysis, encoding detection"
+license     = "Apache-2.0"
+repository  = "https://github.com/revoc-ai/revoc"
+
+[features]
+# Enable ONNX NER model detection. Requires the model files from models/download.sh.
+onnx = ["dep:ort", "dep:ndarray"]
+
+[dependencies]
+revoc-core        = { path = "../revoc-core" }
+revoc-config      = { path = "../revoc-config" }
+revoc-telemetry   = { path = "../revoc-telemetry" }
+
+# D8 — Unicode normalization (NFKC). Non-negotiable.
+unicode-normalization = { workspace = true }
+
+# Regex engines
+regex             = { workspace = true }
+fancy-regex       = { workspace = true }
+
+# Lazy static patterns (compile once, reuse per request)
+once_cell         = { workspace = true }
+
+# Serialization
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+
+# Async detection stages
+tokio             = { workspace = true }
+async-trait       = { workspace = true }
+futures           = { workspace = true }
+
+# Tracing for detection timing
+tracing           = { workspace = true }
+
+# Raw bytes (InspectionInput.raw_body)
+bytes             = { workspace = true }
+
+# Finding.id UUID v7
+uuid              = { workspace = true }
+chrono            = { workspace = true }
+
+# HTTP plugin interface for community detectors
+reqwest           = { workspace = true }
+
+# Hash strategy for JWT deduplication
+sha2              = { workspace = true }
+
+# base64 decode for encoded-content detection (was_encoded flag)
+base64            = { workspace = true }
+
+# Error types
+thiserror         = { workspace = true }
+anyhow            = { workspace = true }
+
+# SmallVec for short scan-target lists
+smallvec          = { workspace = true }
+
+# ONNX NER model — optional, enabled by the "onnx" feature
+ort               = { workspace = true, optional = true }
+ndarray           = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio          = { workspace = true }
+tokio-test     = { workspace = true }
+proptest       = { workspace = true }
+rstest         = { workspace = true }
+assert_matches = { workspace = true }
+insta          = { workspace = true }
+fake           = { workspace = true }
+criterion      = { workspace = true }

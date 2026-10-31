@@ -1,0 +1,80 @@
+# REVOC Policy Manifest — PCI-DSS Baseline
+# ---------------------------------------------------------------------------
+# For workloads in or adjacent to the Cardholder Data Environment (CDE).
+# Activates PCI-DSS profile — credit card numbers, routing numbers, and IBAN
+# codes are removed before any LLM processing or MCP tool call.
+#
+# Apply via:
+#   revoc-gateway policy apply --file pci-dss-baseline.yaml --env production
+#
+# Note: the top-level key (pci_dss_baseline) is required so that OPA can load
+# all example files from the same directory without key conflicts.
+# ---------------------------------------------------------------------------
+
+pci_dss_baseline:
+  apiVersion: revoc.io/v1
+  kind: PolicyManifest
+  metadata:
+    name: pci-dss-baseline
+    version: "1.0.0"
+    description: "PCI-DSS v4 baseline — cardholder data removal, restricted tools"
+    environment: production
+    org_id: "${ORG_ID}"
+
+  spec:
+    profile: pci-dss
+
+    enforcement:
+      mode: enforce
+      fail_open: false
+
+    governance:
+      max_depth: 10
+
+    detection:
+      normalize_before_scan: true
+      regex_enabled: true
+      onnx_enabled: false
+      decode_base64_args: true
+      decode_url_encoded_args: true
+
+    model_restrictions:
+      allowed_models:
+        - "gpt-4o"
+        - "gpt-4o-mini"
+        - "claude-3-5-sonnet"
+
+    mcp_tool_overrides:
+      send_email:
+        action: block
+        allowed_teams: []
+      execute_shell:
+        action: block
+        blocked_environments:
+          - development
+          - staging
+          - production
+
+    quotas:
+      default:
+        tokens_per_request: 75000
+        tokens_per_minute: 300000
+
+    upstream:
+      provider: openai
+
+    audit:
+      enabled: true
+      retention_days: 365
+      include_findings: true
+      include_model: true
+
+    stream:
+      buffer_output: true
+
+    webhooks:
+      enabled: true
+      events:
+        - block
+      min_severity: high
+      cooldown_minutes: 5

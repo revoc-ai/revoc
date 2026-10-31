@@ -1,0 +1,52 @@
+{
+  "revoc": {
+    "policies": {
+      "model_restrictions": {
+        "default": ["gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet"],
+        "restricted_orgs": {}
+      },
+      "mcp_tool_acl": {
+        "execute_sql": {
+          "allowed_teams": ["data-engineering", "backend"],
+          "blocked_environments": ["production"]
+        },
+        "delete_s3_object": {
+          "allowed_teams": ["platform"],
+          "blocked_environments": ["production"]
+        },
+        "send_email": {
+          "allowed_teams": ["marketing", "support"],
+          "blocked_environments": []
+        },
+        "create_user": {
+          "allowed_teams": ["identity-platform"],
+          "blocked_environments": ["production"]
+        },
+        "read_secrets": {
+          "allowed_teams": ["security", "platform"],
+          "blocked_environments": ["production"]
+        },
+        "write_file": {
+          "allowed_teams": ["backend", "devops"],
+          "blocked_environments": []
+        },
+        "execute_shell": {
+          "allowed_teams": ["devops"],
+          "blocked_environments": ["production", "staging"]
+        }
+      },
+      "quotas": {
+        "default": {
+          "tokens_per_request": 100000,
+          "tokens_per_minute": 500000,
+          "requests_per_minute": 100
+        },
+        "anonymous": {
+          "tokens_per_request": 10000,
+          "tokens_per_minute": 50000,
+          "requests_per_minute": 20
+        }
+      }
+    }
+  }
+}

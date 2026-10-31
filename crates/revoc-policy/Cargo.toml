@@ -1,0 +1,61 @@
+[package]
+name        = "revoc-policy"
+version     = "0.1.0"
+edition     = "2021"
+description = "Policy engine: native rules, OPA sidecar, OPA WASM, conflict resolution, decision cache"
+license     = "Apache-2.0"
+repository  = "https://github.com/revoc-ai/revoc"
+
+build = "build.rs"
+
+[dependencies]
+revoc-core      = { path = "../revoc-core" }
+revoc-config    = { path = "../revoc-config" }
+revoc-telemetry = { path = "../revoc-telemetry" }
+
+# Policy engine backends
+wasmtime        = { workspace = true }
+reqwest         = { workspace = true }
+
+# Serialization
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+
+# Async runtime + trait
+tokio           = { workspace = true }
+async-trait     = { workspace = true }
+futures         = { workspace = true }
+
+# Tracing
+tracing         = { workspace = true }
+
+# Decision cache
+dashmap         = { workspace = true }
+arc-swap        = { workspace = true }
+
+# IDs and timestamps
+uuid            = { workspace = true }
+chrono          = { workspace = true }
+
+# Cache key hashing
+sha2            = { workspace = true }
+hex             = { workspace = true }
+
+# Error handling
+anyhow          = { workspace = true }
+thiserror       = { workspace = true }
+
+# Constant-time comparison (API key validation in policy rules)
+subtle          = { workspace = true }
+
+# Lazy security rule set
+once_cell       = { workspace = true }
+
+[dev-dependencies]
+tokio          = { workspace = true }
+tokio-test     = { workspace = true }
+wiremock       = { workspace = true }
+rstest         = { workspace = true }
+assert_matches = { workspace = true }
+insta          = { workspace = true }
+serde_json     = { workspace = true }

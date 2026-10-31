@@ -1,0 +1,407 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC — Runtime Execution Validation & Observability Control
+# Production configuration reference.
+#
+# All fields are documented with purpose and valid values.
+# Override any value via environment variable using the pattern:
+#   REVOC_<SECTION>__<KEY>=value
+#   e.g. REVOC_SERVER__PORT=9090
+#
+# Secrets (API keys, JWT secret, database passwords) MUST come from environment
+# variables or files — never hardcode them in this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Server ────────────────────────────────────────────────────────────────────
+[server]
+# Interface to bind the proxy listener. "0.0.0.0" = all interfaces.
+host = "0.0.0.0"
+
+# Port for the main proxy endpoint (LLM + MCP traffic).
+# Clients point their base_url here.
+port = 8080
+
+# Port for the embedded React dashboard. Set to 0 to disable the dashboard.
+# Dashboard is served at http://<host>:<dashboard_port>/
+dashboard_port = 3000
+
+# Deployment environment label. Appears in audit events and telemetry attributes.
+# Valid values: production | staging | development | test
+environment = "production"
+
+# Maximum allowed request body size in bytes. Requests larger than this are
+# rejected with HTTP 413. Default: 10MB.
+max_request_body_bytes = 10485760
+
+# Maximum allowed response body size in bytes. Responses larger than this are
+# rejected. Default: 50MB.
+max_response_body_bytes = 52428800
+
+# Graceful shutdown timeout in seconds. Proxy waits this long for in-flight
+# requests to complete before forcibly terminating.
+shutdown_timeout_secs = 120
+
+# Enable HTTP/2 on the listening socket. Requires a compatible client.
+# HTTP/1.1 is always supported regardless of this setting.
+http2_enabled = true
+
+# Base URL of the dashboard, used to construct X-Revoc-Dashboard header values.
+# MUST match the actual publicly reachable dashboard address.
+# Example for Kubernetes: https://revoc-dashboard.internal
+dashboard_base_url = "http://localhost:3000"
+
+# ── Upstream ──────────────────────────────────────────────────────────────────
+[upstream]
+# Total request timeout in milliseconds for upstream provider calls.
+# This is the end-to-end timeout from sending the request to receiving the
+# complete response (or the last streaming chunk).
+timeout_ms = 120000
+
+# TCP connection timeout in milliseconds when establishing a new upstream connection.
+connect_timeout_ms = 5000
+
+# Maximum number of idle (keep-alive) connections per upstream host.
+max_idle_connections_per_host = 100
+
+# Mock mode: when true, REVOC returns a synthetic response without calling any
+# upstream provider. Governance pipeline still runs in full. Useful for testing
+# policy rules without spending API credits.
+mock_mode = false
+
+# The synthetic response body returned when mock_mode = true.
+mock_response = "Mock response. Governance pipeline ran successfully."
+
+# ── Upstream Providers ────────────────────────────────────────────────────────
+# Define one [[upstream.providers]] block per AI provider.
+# The first provider with default = true receives requests that do not specify
+# a provider via the X-Revoc-Provider header.
+
+[[upstream.providers]]
+# Logical name. Referenced in X-Revoc-Provider header and audit events.
+name = "openai"
+
+# Base URL of the provider API. Do not include path segments.
+base_url = "https://api.openai.com"
+
+# Environment variable containing the API key for this provider.
+# The key is read at startup and stored in memory; it is never logged.
+api_key_env = "OPENAI_API_KEY"
+
+# Alternative: path to a file containing the API key (one key, no newline).
+# Takes precedence over api_key_env if both are set.
+api_key_file = ""
+
+# Wire format. Determines how REVOC translates requests and responses.
+# Valid values: openai | anthropic | azure
+format = "openai"
+
+# Whether this provider receives requests that do not specify a provider.
+default = true
+
+[[upstream.providers]]
+name = "anthropic"
+base_url = "https://api.anthropic.com"
+api_key_env = "ANTHROPIC_API_KEY"
+api_key_file = ""
+# anthropic format: REVOC translates OpenAI-format requests to Anthropic's
+# Messages API format and normalizes responses back to OpenAI format.
+format = "anthropic"
+default = false
+
+[[upstream.providers]]
+name = "azure"
+# Set to your Azure OpenAI endpoint: https://<resource>.openai.azure.com
+base_url = ""
+api_key_env = "AZURE_OPENAI_API_KEY"
+api_key_file = ""
+# azure format: uses api-version query param and deployment-based path routing.
+format = "azure"
+default = false
+
+# ── Policy ────────────────────────────────────────────────────────────────────
+[policy]
+# Policy engine to use.
+# Valid values:
+#   native  — pure Rust engine with all 30 default rules (Tier 1/2, zero deps)
+#   sidecar — delegates to an external OPA HTTP server at opa_url (Tier 3)
+#   wasm    — loads a compiled OPA WASM bundle in-process via wasmtime (Tier 3)
+engine = "native"
+
+# Enforcement mode.
+# Valid values:
+#   enforce — decisions are applied: blocks stop traffic, redactions mutate body
+#   shadow  — decisions are observed only: effective_action is always Audit
+#             regardless of configured action. Use for dry-run policy rollout.
+enforcement_mode = "enforce"
+
+# URL of the OPA HTTP server. Only used when engine = "sidecar".
+# Example: http://opa-sidecar:8181
+opa_url = "http://localhost:8181"
+
+# Timeout in milliseconds for OPA HTTP evaluation calls.
+# Only used when engine = "sidecar".
+opa_timeout_ms = 2000
+
+# Path to a compiled OPA WASM bundle (.tar.gz). Only used when engine = "wasm".
+wasm_bundle_path = ""
+
+# CRITICAL: fail_open = false means REVOC blocks all traffic if the policy
+# engine is unreachable or encounters an unrecoverable error. This is the
+# only safe setting for production. Never set to true in a committed config.
+fail_open = false
+
+# How long (seconds) to cache identical policy decisions. Reduces policy engine
+# load for repeated requests with the same findings + caller context.
+decision_cache_ttl_secs = 60
+
+# Maximum number of entries in the policy decision LRU cache.
+decision_cache_max_entries = 10000
+
+# Conflict resolution strategy when multiple rules match.
+# Valid values:
+#   tier_based   — higher PolicyRuleTier wins; within a tier, Block > Redact > Audit > Allow
+#   strict_deny  — any Block from any tier blocks the request
+conflict_resolution = "tier_based"
+
+# ── Governance ────────────────────────────────────────────────────────────────
+[governance]
+# Maximum recursion depth for nested governance calls (agent → REVOC → agent loop).
+# Requests carrying X-Revoc-Depth >= max_depth are rejected with HTTP 503.
+# SPEC.md Non-Negotiable Principle 6. Do not increase above 10.
+max_depth = 10
+
+# Action to take when governance depth is exceeded.
+# Valid values: block | allow (block is always correct for production)
+depth_exceeded_action = "block"
+
+# ── Kill-Switch ───────────────────────────────────────────────────────────────
+[kill_switch]
+# Enable the emergency kill-switch subsystem. When active, all AI traffic is
+# blocked within ~50ms across all instances via Redis pub/sub propagation.
+# Health/readiness/metrics endpoints always remain accessible.
+# SPEC.md Non-Negotiable Principle 10.
+enabled = true
+
+# Redis pub/sub channel for kill-switch propagation.
+# All REVOC instances in the same Redis namespace subscribe to this channel.
+redis_channel = "revoc:kill_switch"
+
+# Behavior when Redis is unavailable during kill-switch activation.
+# Valid values:
+#   local_only — activate in this instance only; other instances are not notified
+#   fail       — reject the activation request if Redis is unreachable
+on_redis_unavailable = "local_only"
+
+# ── Detection ─────────────────────────────────────────────────────────────────
+[detection]
+# MUST remain true in production. Runs NFKC + zero-width + RTLO normalization
+# on every text field before regex detection. Prevents Unicode evasion attacks.
+# SPEC.md Non-Negotiable Principle 5, §9 D8.
+normalize_before_scan = true
+
+# Enable the Rust regex detection engine (PII, secrets, security, financial).
+# This is the primary detection tier and should always be true.
+regex_enabled = true
+
+# Enable ONNX NER model for entity detection. Requires the model file at
+# onnx_model_path. Higher recall than regex for unstructured text; higher latency.
+onnx_enabled = false
+
+# Path to the BERT NER ONNX model file. Download with: models/download.sh
+onnx_model_path = "models/bert-base-ner.onnx"
+
+# Path to the tokenizer configuration for the ONNX model.
+onnx_tokenizer_path = "models/bert-base-ner-tokenizer.json"
+
+# Enable Microsoft Presidio enricher. Requires a running Presidio analyzer service.
+presidio_enabled = false
+
+# URL of the Presidio analyzer HTTP service.
+# Example: http://presidio-analyzer:5001
+presidio_url = ""
+
+# Attempt to base64-decode argument values before scanning. Catches secrets
+# that have been base64-encoded to evade detection. Sets was_encoded = true
+# on findings discovered in decoded content.
+decode_base64_args = true
+
+# Attempt to URL-decode argument values before scanning. Catches path traversal
+# and SSRF patterns hidden behind URL encoding.
+decode_url_encoded_args = true
+
+# ── Streaming ─────────────────────────────────────────────────────────────────
+[stream]
+# When false (default), use the sliding window scanner for streaming responses.
+# Scans each SSE chunk as it arrives without buffering the full response.
+# When true, buffer the entire response before applying governance and forwarding.
+# Use true for HIPAA/PCI-DSS compliance modes where complete scan is required.
+buffer_output = false
+
+# Size of the sliding window in bytes. The scanner maintains this many bytes
+# of recent output to detect patterns that span SSE chunk boundaries.
+sliding_window_size = 256
+
+# Accumulate tool call arguments across SSE chunks and run MCP governance
+# when finish_reason = "tool_calls". When false, tool call governance is skipped
+# for streaming responses (not recommended for production).
+tool_call_accumulate = true
+
+# ── MCP ───────────────────────────────────────────────────────────────────────
+[mcp]
+# Analyze tools/list responses for dangerous parameter names and suspicious
+# description patterns before the AI client receives them.
+# SPEC.md Non-Negotiable Principle 13, §9 D10.
+# MUST remain true in production — schema poisoning defense.
+analyze_tool_manifests = true
+
+# When true, automatically remove tools with Critical manifest findings from
+# the tools/list response before returning to the AI client.
+auto_disable_dangerous_tools = false
+
+# Action to take for tools with High (non-Critical) manifest findings.
+# Valid values: audit | block | allow
+dangerous_tool_action = "audit"
+
+# Trusted MCP server registry. Only servers in this list can receive tool calls.
+# Uncomment and populate for production deployments.
+# [[mcp.trusted_servers]]
+# id = "my-database-tool"
+# url = "http://mcp-db-tool:9000"
+# tls_verify = true
+
+# ── Session ───────────────────────────────────────────────────────────────────
+[session]
+# Enable session state tracking. Tracks tools called, rows read, PII seen,
+# and external send attempts per caller session. Used for data exfiltration
+# detection (session_data_exfil_v1 rule).
+enabled = true
+
+# Session TTL in seconds. Sessions idle longer than this are evicted.
+ttl_secs = 3600
+
+# Number of rows read in a session before triggering a SessionAnomaly finding.
+# Part of the data exfiltration heuristic.
+max_rows_before_alert = 500
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+[storage]
+# Audit event and policy bundle storage backend.
+# Valid values:
+#   sqlite   — embedded SQLite, zero external deps (Tier 1 default)
+#   postgres — external Postgres (Tier 2/3, requires DATABASE_URL env var)
+backend = "sqlite"
+
+# Path to the SQLite database file. Relative to the working directory.
+# Only used when backend = "sqlite".
+sqlite_path = "revoc-audit.db"
+
+# Environment variable containing the Postgres connection URL.
+# Only used when backend = "postgres".
+# Example value: postgres://revoc:secret@db:5432/revoc?sslmode=require
+postgres_url_env = "DATABASE_URL"
+
+# Database connection pool size.
+pool_size = 20
+
+# Run pending migrations automatically on startup. Set to false if you manage
+# migrations externally (e.g. in a Kubernetes init container).
+migrations_auto_run = true
+
+# Number of audit events to accumulate before flushing to the database.
+# Audit writes are batched to avoid blocking the request path.
+audit_write_batch_size = 100
+
+# Maximum time in milliseconds to hold audit events before flushing,
+# even if the batch is not full.
+audit_write_interval_ms = 100
+
+# Number of days to retain audit events. Events older than this are deleted
+# by the background retention job.
+audit_retention_days = 90
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+[cache]
+# Policy decision cache backend.
+# Valid values:
+#   memory — in-process LRU cache (Tier 1/2, per-instance, lost on restart)
+#   redis  — shared Redis cache (Tier 2/3, consistent across instances)
+backend = "memory"
+
+# Environment variable containing the Redis connection URL.
+# Only used when backend = "redis".
+redis_url_env = "REDIS_URL"
+
+# ── Telemetry ─────────────────────────────────────────────────────────────────
+[telemetry]
+# gRPC endpoint for the OpenTelemetry collector.
+# Leave empty to disable OTel trace/metric export. Prometheus metrics are
+# always available regardless of this setting.
+# Example: http://otel-collector:4317
+otlp_endpoint = ""
+
+# Service name reported in OTel spans and Prometheus labels.
+service_name = "revoc-proxy"
+
+# Service version reported in OTel resource attributes.
+service_version = "1.0.0"
+
+# Fraction of traces to sample (0.0 = no sampling, 1.0 = sample everything).
+# In production, consider 0.1–0.5 to reduce collector load.
+sample_rate = 1.0
+
+# Port for the Prometheus metrics scrape endpoint (/metrics).
+prometheus_port = 9090
+
+# Minimum log level. Valid values: trace | debug | info | warn | error
+log_level = "info"
+
+# Log output format.
+# Valid values:
+#   json   — structured JSON (production, for log aggregators)
+#   pretty — human-readable ANSI colored output (development only)
+log_format = "json"
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+[auth]
+# Authentication mode for incoming proxy requests.
+# Valid values:
+#   apikey — clients present a static API key (Bearer or x-api-key header)
+#   jwt    — clients present a signed JWT (validated against jwt_secret_env)
+#   none   — no authentication (development only — NEVER use in production)
+mode = "apikey"
+
+# Environment variable containing the JWT signing secret.
+# Only used when mode = "jwt". Must be at least 32 bytes.
+jwt_secret_env = "REVOC_JWT_SECRET"
+
+# Environment variable containing comma-separated API keys.
+# Only used when mode = "apikey" and api_keys_file is not set.
+api_keys_env = "REVOC_API_KEYS"
+
+# Path to a file containing one API key per line.
+# Only used when mode = "apikey". Takes precedence over api_keys_env.
+# Preferred over env in production to avoid key exposure in process env.
+api_keys_file = ""
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+[dashboard]
+# Authentication mode for the dashboard UI.
+# Valid values:
+#   shared — dashboard requires the same API key as the proxy (auth.mode must be apikey)
+#   none   — dashboard is unauthenticated (development only)
+auth_mode = "shared"
+
+# Maximum number of concurrent SSE connections to the live feed endpoint.
+# Excess connections are rejected with HTTP 503.
+max_sse_connections = 100
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+[webhooks]
+# Enable webhook delivery of governance events to external HTTP endpoints.
+enabled = false
+
+# Define one [[webhooks.endpoints]] block per destination.
+# [[webhooks.endpoints]]
+# url = "https://your-siem.example.com/revoc-events"
+# events = ["block", "quota_exceeded"]        # Event types to deliver
+# min_severity = "high"                        # Minimum finding severity to deliver
+# cooldown_minutes = 5                         # Minimum minutes between deliveries per rule

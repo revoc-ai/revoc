@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC .dockerignore
+#
+# Keeps the build context small and Docker builds fast. Without this file,
+# `docker build .` from the repo root sends the ENTIRE working tree (including
+# multi-GB Rust `target/` artifacts, `.git/` history, `node_modules/`, etc.)
+# to the Docker daemon on every build.
+#
+# IMPORTANT: crates/revoc-dashboard/ui/dist/ is explicitly UN-ignored below —
+#            it must be present in the build context (pre-built SPA, see
+#            SPEC.md §6) for the single-container proxy image to embed it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── VCS ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.github/
+
+# ── Rust build artifacts ──────────────────────────────────────────────────────
+target/
+**/target/
+debug/
+**/*.rs.bk
+*.pdb
+**/mutants.out*/
+.cargo-ok
+flamegraph.svg
+perf.data
+perf.data.old
+heaptrack.*
+massif.out.*
+*.profraw
+*.profdata
+lcov.info
+lcov-*.info
+
+# ── Environment & secrets — never send these to the build context ────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+api_keys.txt
+api-keys.txt
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+**/pip-wheel-metadata/
+**/*.egg-info/
+**/.eggs/
+**/.pytest_cache/
+**/htmlcov/
+**/.coverage
+**/.coverage.*
+**/coverage.xml
+**/*.cover
+**/.hypothesis/
+**/.mypy_cache/
+**/.dmypy.json
+**/dmypy.json
+**/.ruff_cache/
+**/.pytype/
+
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+.yarn/
+coverage/
+
+# Dashboard SPA: keep the pre-built dist/, ignore everything else Node-related
+crates/revoc-dashboard/ui/node_modules/
+!crates/revoc-dashboard/ui/dist/
+!crates/revoc-dashboard/ui/dist/**
+
+# ── Docs / generated sites ────────────────────────────────────────────────────
+site/
+docs/site/
+mkdocs_build/
+
+# ── ML models — large binaries, downloaded via models/download.sh ────────────
+models/*.onnx
+models/*.json
+!models/README.md
+!models/download.sh
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.fleet/
+.zed/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+*.log.*
+
+# ── Helm packaging artifacts ──────────────────────────────────────────────────
+helm/revoc/charts/
+helm/revoc/*.tgz
+
+# ── Claude / editor tooling directories ───────────────────────────────────────
+.claude/

@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mcp",
+    "bodyPatterns": [{ "matchesJsonPath": "$[?(@.method == 'tools/list')]" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "jsonrpc": "2.0",
+      "id": "1",
+      "result": {
+        "tools": [
+          {
+            "name": "calculator",
+            "description": "Evaluate a basic arithmetic expression.",
+            "inputSchema": {
+              "type": "object",
+              "properties": { "expression": { "type": "string" } }
+            }
+          },
+          {
+            "name": "execute_sql",
+            "description": "Run a read-only SQL query against the reporting replica.",
+            "inputSchema": {
+              "type": "object",
+              "properties": { "query": { "type": "string" } }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

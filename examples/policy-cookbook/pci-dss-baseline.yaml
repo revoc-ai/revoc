@@ -1,0 +1,88 @@
+# REVOC Policy — PCI-DSS Baseline
+#
+# Protects cardholder data (CHD) in AI workloads subject to PCI-DSS.
+# Primary Account Numbers (PANs) and authentication data are blocked entirely.
+# Transactions through the AI system are audited at the highest retention level.
+#
+# Apply with:
+#   curl -X POST http://localhost:8081/internal/policies \
+#     -H "Content-Type: application/yaml" \
+#     -H "X-Admin-Key: $REVOC_ADMIN_KEY" \
+#     --data-binary @pci-dss-baseline.yaml
+
+name: pci-dss-baseline
+version: "1.0"
+environment: production
+profile: pci-dss
+description: >
+  PCI-DSS cardholder data protection. Credit card numbers (Luhn-validated),
+  IBAN codes, routing numbers, and bank accounts are removed. Secrets including
+  private keys and API keys trigger immediate block. Audit retention: 90 days minimum.
+
+rules:
+  # Cardholder Data — must not reach any LLM (PCI-DSS Requirement 3)
+  - rule_id: pii_credit_card_v1
+    action: remove
+    enforcement_mode: enforce
+    description: >
+      Remove credit card PANs (Visa, MC, Amex, Discover — Luhn validated).
+      PCI-DSS Req 3.4: PAN must not be stored/transmitted in cleartext.
+
+  - rule_id: pii_iban_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove IBAN codes (mod-97 checksum validated).
+
+  - rule_id: pii_bank_account_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove bank account numbers detected in context.
+
+  # Authentication data — absolute block (PCI-DSS Requirement 3.2)
+  - rule_id: secret_block_v1
+    action: block
+    enforcement_mode: enforce
+    description: >
+      Block any request or response containing secrets (API keys, private keys,
+      passwords, tokens). PCI-DSS Req 3.2: sensitive authentication data must
+      not be stored after authorization, including in LLM context.
+
+  - rule_id: secret_private_key_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove PEM private keys from all content.
+
+  - rule_id: secret_password_json_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove password fields found in JSON content.
+
+  # Additional PII masking
+  - rule_id: pii_email_v1
+    action: mask
+    enforcement_mode: enforce
+
+  - rule_id: pii_phone_v1
+    action: mask
+    enforcement_mode: enforce
+
+  - rule_id: pii_ssn_v1
+    action: remove
+    enforcement_mode: enforce
+
+  # Token quota — PCI scope workloads should have strict limits
+  - rule_id: token_quota_v1
+    action: block
+    enforcement_mode: enforce
+    parameters:
+      max_tokens_per_hour: 100000
+      max_tokens_per_day: 1000000
+    description: >
+      Token quota for PCI-scoped AI workloads. Limits accidental data exfiltration
+      via volume. Adjust per your cardholder data environment (CDE) scope.
+
+# Audit retention — PCI-DSS Req 10.5: retain audit logs for 12 months
+audit_retention_days: 365
+
+# Buffer all streaming responses — required to inspect full response before delivery
+stream_buffer_output: true

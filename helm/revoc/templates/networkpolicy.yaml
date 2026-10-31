@@ -1,0 +1,64 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "revoc.proxy.fullname" . }}
+  labels:
+    {{- include "revoc.proxy.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "revoc.proxy.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Proxy + dashboard + metrics: reachable from anywhere in the namespace
+    # (typically fronted by an Ingress controller).
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.proxy.ports.proxy }}
+        - protocol: TCP
+          port: {{ .Values.proxy.ports.dashboard }}
+        - protocol: TCP
+          port: {{ .Values.proxy.ports.metrics }}
+    # Internal emergency/kill-switch API: restricted to the admin API and
+    # pods explicitly labeled to access it. NEVER exposed via Ingress.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "revoc.admin.selectorLabels" . | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "revoc.proxy.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.proxy.ports.internal }}
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Postgres / Redis (bundled dependencies) and upstream AI providers (HTTPS).
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

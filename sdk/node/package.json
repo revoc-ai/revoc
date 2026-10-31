@@ -1,0 +1,44 @@
+{
+  "name": "@revoc-io/sdk",
+  "version": "1.0.0",
+  "description": "Zero-code-change governance SDK for REVOC — drop-in OpenAI client wrapper.",
+  "license": "Apache-2.0",
+  "author": "REVOC (https://revoc.io)",
+  "homepage": "https://revoc.io",
+  "keywords": ["ai", "governance", "llm", "proxy", "security", "pii", "openai"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/revoc-ai/revoc.git",
+    "directory": "sdk/node"
+  },
+  "bugs": {
+    "url": "https://github.com/revoc-ai/revoc/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "openai": "^4.60.0"
+  },
+  "peerDependencies": {
+    "openai": "^4.60.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.0"
+  }
+}

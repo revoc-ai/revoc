@@ -1,0 +1,35 @@
+[package]
+name        = "revoc-dashboard"
+version     = "0.1.0"
+edition     = "2021"
+description = "Embedded React dashboard: SSE live feed, REST API, audit query, auth"
+license     = "Apache-2.0"
+repository  = "https://github.com/revoc-ai/revoc"
+
+[dependencies]
+revoc-core      = { path = "../revoc-core" }
+revoc-telemetry = { path = "../revoc-telemetry" }
+
+axum        = { workspace = true }
+tower       = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }
+bytes       = { workspace = true }
+include_dir = { workspace = true }
+futures     = { workspace = true }
+mime        = { workspace = true }
+uuid        = { workspace = true }
+chrono      = { workspace = true }
+subtle      = { workspace = true }
+async-trait = { workspace = true }
+sqlx        = { workspace = true }
+serde_yaml  = { package = "serde_norway", version = "0.9" }
+
+[dev-dependencies]
+tokio          = { workspace = true }
+tokio-test     = { workspace = true }
+axum           = { workspace = true }
+tower          = { workspace = true }
+serde_json     = { workspace = true }

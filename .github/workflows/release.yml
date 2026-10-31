@@ -1,0 +1,248 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+  IMAGE_PROXY: ghcr.io/revoc-ai/revoc
+
+jobs:
+  # ── Gate: tests must pass before any publishing step ─────────────────────────
+  test:
+    name: Test gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ubuntu-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ubuntu-cargo-
+      - name: clippy
+        run: cargo clippy --workspace -- -D warnings
+      - name: test
+        run: cargo test --workspace --all-features
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+      - name: OPA policy tests
+        run: opa test policies/ -v --coverage
+
+  # ── Changelog ─────────────────────────────────────────────────────────────────
+  changelog:
+    name: Generate changelog excerpt
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: git-cliff
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGES.md
+
+  # ── Build release binaries ────────────────────────────────────────────────────
+  build-binaries:
+    name: Build release binary (${{ matrix.target }})
+    needs: [test, changelog]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ matrix.target }}-
+      - name: Install cross-compilation toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} -p revoc-proxy
+      - name: Package
+        run: |
+          mkdir -p dist
+          tar -czf "dist/revoc-proxy-${{ matrix.target }}.tar.gz" \
+            -C target/${{ matrix.target }}/release revoc-proxy
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revoc-proxy-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  # ── Build and push container images (multi-arch) ─────────────────────────────
+  docker-publish:
+    name: Build and push container images
+    needs: [test, changelog]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push proxy image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/revoc-proxy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          tags: |
+            ${{ env.IMAGE_PROXY }}:latest
+            ${{ env.IMAGE_PROXY }}:${{ steps.meta.outputs.version }}
+      - name: Build and push ML-enabled image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/revoc-proxy/Dockerfile.ml
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            ML_ENABLED=true
+          tags: |
+            ${{ env.IMAGE_PROXY }}:latest-ml
+            ${{ env.IMAGE_PROXY }}:${{ steps.meta.outputs.version }}-ml
+
+  # ── Package Helm chart ────────────────────────────────────────────────────────
+  helm-package:
+    name: Package Helm chart
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Lint chart
+        run: helm lint helm/revoc/
+      - name: Package chart
+        run: |
+          helm package helm/revoc/ \
+            --version "${{ steps.meta.outputs.version }}" \
+            --app-version "${{ steps.meta.outputs.version }}" \
+            --destination dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/revoc-*.tgz
+
+  # ── Publish Python SDK to PyPI ───────────────────────────────────────────────
+  publish-python-sdk:
+    name: Publish Python SDK to PyPI
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          cd sdk/python
+          pip install --upgrade hatchling build
+          python -m build
+      - name: Publish to PyPI (OIDC trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist/
+
+  # ── Publish Node SDK to npm ───────────────────────────────────────────────────
+  publish-node-sdk:
+    name: Publish Node SDK to npm
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install, build, test and publish (with provenance)
+        run: |
+          cd sdk/node
+          npm ci
+          npm run build
+          npm test
+          npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ── Publish GitHub release ────────────────────────────────────────────────────
+  github-release:
+    name: Publish GitHub release
+    needs: [changelog, build-binaries, docker-publish, helm-package, publish-python-sdk, publish-node-sdk]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tgz
+          body: ${{ needs.changelog.outputs.notes }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+# Documentation is deployed to revoc.io by .github/workflows/docs.yml
+# (GitHub Pages, "GitHub Actions" source) on every push to main.

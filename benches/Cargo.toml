@@ -1,0 +1,35 @@
+[package]
+name = "revoc-benches"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[[bench]]
+name = "detector_throughput"
+harness = false
+
+[[bench]]
+name = "policy_evaluation"
+harness = false
+
+[[bench]]
+name = "redaction_throughput"
+harness = false
+
+[dependencies]
+revoc-core      = { path = "../crates/revoc-core" }
+revoc-config    = { path = "../crates/revoc-config" }
+revoc-telemetry = { path = "../crates/revoc-telemetry" }
+revoc-detector  = { path = "../crates/revoc-detector" }
+revoc-pipeline  = { path = "../crates/revoc-pipeline" }
+revoc-policy    = { path = "../crates/revoc-policy" }
+revoc-redaction = { path = "../crates/revoc-redaction" }
+tokio           = { workspace = true }
+bytes           = { workspace = true }
+serde_json      = { workspace = true }
+uuid            = { workspace = true }
+chrono          = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }

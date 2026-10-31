@@ -1,0 +1,17 @@
+{{- $replicas := .Values.proxy.replicaCount }}
+{{- if .Values.autoscaling.enabled }}
+{{- $replicas = .Values.autoscaling.minReplicas }}
+{{- end }}
+{{- if and .Values.proxy.podDisruptionBudget.enabled (gt (int $replicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "revoc.proxy.fullname" . }}
+  labels:
+    {{- include "revoc.proxy.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.proxy.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "revoc.proxy.selectorLabels" . | nindent 6 }}
+{{- end }}

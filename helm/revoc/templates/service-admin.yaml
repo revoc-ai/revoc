@@ -1,0 +1,17 @@
+{{- if .Values.admin.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "revoc.admin.fullname" . }}
+  labels:
+    {{- include "revoc.admin.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.admin.service.type }}
+  selector:
+    {{- include "revoc.admin.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.admin.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

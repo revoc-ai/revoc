@@ -1,0 +1,77 @@
+name: Feature request
+description: Propose a new capability, detection pattern, policy rule, or integration for REVOC
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement to REVOC. Please check the [15 non-negotiable principles](https://github.com/revoc-ai/revoc/blob/main/SPEC.md)
+        and existing issues/discussions before filing — proposals that conflict with a non-negotiable principle (e.g. adding governance code to application
+        code, or relaxing fail-closed behavior) will need a strong justification.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Detection (PII / secrets / security patterns)
+        - Policy engine / Rego rules
+        - revoc-proxy (handlers, streaming, MCP, kill-switch)
+        - revoc-dashboard
+        - admin-api (revoc-gateway)
+        - Python SDK (revoc-sdk)
+        - Node SDK (@revoc-io/sdk)
+        - Helm chart / deployment
+        - Telemetry / observability
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the gap or pain point. Link to a real scenario if you can (redact any sensitive details).
+      placeholder: Today, REVOC cannot detect X, which means teams running Y are exposed to Z.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should REVOC do instead? Include sketch config, rule IDs, API shapes, or rego snippets if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you considered and why you didn't pick them.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on non-negotiable principles
+      description: |
+        Does this touch any of the 15 non-negotiable principles in SPEC.md (e.g. P95 < 10ms overhead, fail-closed,
+        Rust-native detection in the hot path, normalize-before-detect, max governance depth)? Explain how your proposal
+        stays compatible with them.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues/discussions and this hasn't been proposed.
+          required: true
+        - label: This proposal does not require adding governance code into application code.
+          required: true
+        - label: This proposal preserves fail-closed behavior (no `fail_open = true` paths).
+          required: true

@@ -1,0 +1,155 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC — Development Configuration
+#
+# Use with: cargo run --bin revoc-proxy -- serve --config configs/revoc.dev.toml
+#
+# Differences from production (revoc.toml):
+#   - auth.mode = "none"              (no API key required)
+#   - upstream.mock_mode = true       (no real AI provider calls)
+#   - storage.backend = "sqlite"      (no Postgres needed)
+#   - cache.backend = "memory"        (no Redis needed)
+#   - log_level = "debug"             (verbose output)
+#   - log_format = "pretty"           (human-readable ANSI logs)
+#   - enforcement_mode = "enforce"    (rules still enforced — real governance)
+#   - fail_open = false               (still fail-closed — same as production)
+#   - normalize_before_scan = true    (D8 always on)
+#   - analyze_tool_manifests = true   (D10 always on)
+#   - kill_switch.enabled = true      (D11 always on)
+#   - governance.max_depth = 10       (D9 always on)
+# ─────────────────────────────────────────────────────────────────────────────
+
+[server]
+host = "0.0.0.0"
+port = 8080
+dashboard_port = 3000
+environment = "development"
+max_request_body_bytes = 10485760
+max_response_body_bytes = 52428800
+shutdown_timeout_secs = 30
+http2_enabled = true
+dashboard_base_url = "http://localhost:3000"
+
+[upstream]
+timeout_ms = 30000
+connect_timeout_ms = 5000
+max_idle_connections_per_host = 10
+# Mock mode: governance pipeline runs in full; no upstream provider is called.
+# Responses are synthetic so you can develop and test rules without API keys.
+mock_mode = true
+mock_response = "Mock LLM response. Full governance pipeline executed."
+
+[[upstream.providers]]
+name = "openai"
+base_url = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+api_key_file = ""
+format = "openai"
+default = true
+
+[[upstream.providers]]
+name = "anthropic"
+base_url = "https://api.anthropic.com"
+api_key_env = "ANTHROPIC_API_KEY"
+api_key_file = ""
+format = "anthropic"
+default = false
+
+[policy]
+engine = "native"
+# enforce: governance decisions are applied even in dev — catches bugs early.
+enforcement_mode = "enforce"
+opa_url = "http://localhost:8181"
+opa_timeout_ms = 2000
+wasm_bundle_path = ""
+# fail_open is ALWAYS false. Non-negotiable. Even in development.
+fail_open = false
+decision_cache_ttl_secs = 10
+decision_cache_max_entries = 1000
+conflict_resolution = "tier_based"
+
+[governance]
+# Max depth is always 10. Do not change this value.
+max_depth = 10
+depth_exceeded_action = "block"
+
+[kill_switch]
+# Kill-switch is always enabled. Test D11 behavior locally.
+enabled = true
+redis_channel = "revoc:kill_switch"
+# In dev there is typically no Redis; local_only means kill-switch works
+# for the single running instance without Redis.
+on_redis_unavailable = "local_only"
+
+[detection]
+# normalize_before_scan is ALWAYS true. Non-negotiable. Even in development.
+normalize_before_scan = true
+regex_enabled = true
+# ONNX disabled in dev — requires model download.
+onnx_enabled = false
+onnx_model_path = "models/bert-base-ner.onnx"
+onnx_tokenizer_path = "models/bert-base-ner-tokenizer.json"
+presidio_enabled = false
+presidio_url = ""
+decode_base64_args = true
+decode_url_encoded_args = true
+
+[stream]
+buffer_output = false
+sliding_window_size = 256
+tool_call_accumulate = true
+
+[mcp]
+# analyze_tool_manifests is ALWAYS true. Non-negotiable. Even in development.
+analyze_tool_manifests = true
+auto_disable_dangerous_tools = false
+dangerous_tool_action = "audit"
+
+[session]
+enabled = true
+ttl_secs = 3600
+max_rows_before_alert = 500
+
+[storage]
+backend = "sqlite"
+sqlite_path = "revoc-dev.db"
+postgres_url_env = "DATABASE_URL"
+pool_size = 5
+migrations_auto_run = true
+audit_write_batch_size = 10
+audit_write_interval_ms = 50
+audit_retention_days = 7
+
+[cache]
+backend = "memory"
+redis_url_env = "REDIS_URL"
+
+[telemetry]
+# OTel disabled in dev by default. Set to http://localhost:4317 if you run
+# the observability stack with: make up-obs
+otlp_endpoint = ""
+service_name = "revoc-proxy-dev"
+service_version = "0.0.0-dev"
+sample_rate = 1.0
+prometheus_port = 9090
+log_level = "debug"
+# pretty: human-readable colored output for local development.
+log_format = "pretty"
+
+[auth]
+# No authentication in development. Never use mode = "none" in production.
+mode = "none"
+jwt_secret_env = "REVOC_JWT_SECRET"
+api_keys_env = "REVOC_API_KEYS"
+api_keys_file = ""
+# Admin key for the internal emergency/kill-switch API (port 8081).
+# Development-only default — production MUST override via REVOC_AUTH__ADMIN_KEY
+# with a strong, randomly generated secret.
+admin_key = "dev-admin-key"
+
+[dashboard]
+# Dashboard is unauthenticated in development.
+auth_mode = "none"
+max_sse_connections = 20
+
+[webhooks]
+enabled = false

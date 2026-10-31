@@ -1,0 +1,214 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC Helm chart — default values (Tier 3 baseline, single-region).
+# Override with values.production.yaml or your own values file for production.
+# ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# ── Proxy (revoc-proxy) ───────────────────────────────────────────────────────
+proxy:
+  image:
+    repository: ghcr.io/revoc-ai/revoc
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  terminationGracePeriodSeconds: 120
+
+  ports:
+    proxy: 8080
+    dashboard: 3000
+    metrics: 9090
+    internal: 8081
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+  podSecurityContext:
+    fsGroup: 65532
+
+  probes:
+    startup:
+      path: /startup
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 30
+    readiness:
+      path: /ready
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      failureThreshold: 3
+    liveness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  service:
+    type: ClusterIP
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ── Admin API ─────────────────────────────────────────────────────────────────
+admin:
+  enabled: true
+  image:
+    repository: ghcr.io/revoc-ai/revoc-admin-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 8001
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+  podSecurityContext:
+    fsGroup: 65532
+
+  service:
+    type: ClusterIP
+
+# ── Autoscaling (HPA) ─────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: revoc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: proxy
+          port: 8080
+        - path: /dashboard
+          pathType: Prefix
+          service: proxy
+          port: 3000
+  tls: []
+
+# ── Network Policy ────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+
+# ── Service Account ───────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ── REVOC governance configuration (mirrors configs/revoc.toml) ──────────────
+governance:
+  maxDepth: 10
+  depthExceededAction: block
+
+killSwitch:
+  enabled: true
+  redisChannel: "revoc:kill_switch"
+  onRedisUnavailable: local_only
+
+detection:
+  normalizeBeforeScan: true
+  regexEnabled: true
+  onnxEnabled: false
+  presidioEnabled: false
+
+mcp:
+  analyzeToolManifests: true
+  autoDisableDangerousTools: false
+  dangerousToolAction: audit
+
+policy:
+  engine: native
+  enforcementMode: enforce
+  failOpen: false
+
+dashboard:
+  baseUrl: "https://revoc.example.com"
+  authMode: shared
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+secrets:
+  # Set create=false and provide existingSecret to bring your own secret.
+  create: true
+  existingSecret: ""
+  adminKey: "change-me-admin-key"
+  apiKeys: "change-me-api-key"
+  jwtSecret: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+
+# ── Bundled dependencies ──────────────────────────────────────────────────────
+postgresql:
+  enabled: true
+  auth:
+    username: revoc
+    password: revoc
+    database: revoc
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# ── Telemetry ─────────────────────────────────────────────────────────────────
+telemetry:
+  otlpEndpoint: ""
+  sampleRate: 1.0
+  logLevel: info
+  logFormat: json
+
+extraEnv: []

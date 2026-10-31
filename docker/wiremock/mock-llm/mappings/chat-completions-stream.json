@@ -1,0 +1,16 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/chat/completions",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.stream == true)]" },
+      { "matchesJsonPath": "$.messages[?(@.content =~ /(?i).*ssn.*/)]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "text/event-stream" },
+    "body": "data: {\"id\":\"chatcmpl-mock-stream\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o-mini\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-mock-stream\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there, the SSN is 123-45-6789 ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-mock-stream\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o-mini\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+  }
+}

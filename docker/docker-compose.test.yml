@@ -1,0 +1,272 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC — integration test stack.
+#
+#   docker compose -f docker/docker-compose.test.yml up -d
+#   pytest tests/integration/ -v
+#   docker compose -f docker/docker-compose.test.yml down -v
+#
+# Replaces real LLM/MCP upstreams with WireMock stubs so integration tests
+# run deterministically and offline. Uses SQLite — no Postgres dependency —
+# to keep the stack fast to start and tear down.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: revoc-test
+
+services:
+  revoc-proxy:
+    build:
+      context: ..
+      dockerfile: crates/revoc-proxy/Dockerfile
+    container_name: revoc-proxy-test
+    restart: "no"
+    ports:
+      - "8080:8080"
+      - "3000:3000"
+      - "9090:9090"
+      - "8081:8081"
+    environment:
+      REVOC_AUTH__MODE: none
+      REVOC_STORAGE__BACKEND: sqlite
+      REVOC_POLICY__ENGINE: native
+      REVOC_LOG_FORMAT: json
+      REVOC_SERVER__ENVIRONMENT: test
+      REVOC_UPSTREAM__MOCK_MODE: "false"
+      REVOC_UPSTREAM__PROVIDERS__0__NAME: openai
+      REVOC_UPSTREAM__PROVIDERS__0__BASE_URL: http://mock-llm:8080
+      REVOC_UPSTREAM__PROVIDERS__0__FORMAT: openai
+      REVOC_UPSTREAM__PROVIDERS__0__DEFAULT: "true"
+      REVOC_MCP__TRUSTED_SERVERS__0__ID: mock-mcp
+      REVOC_MCP__TRUSTED_SERVERS__0__URL: http://mock-mcp:8080/mcp
+      # auth.mode=none means load_api_keys() is empty, so dashboard.auth_mode
+      # "shared" (the configs/revoc.toml default) would 401 every dashboard
+      # request with no keys to match. Set to "none" so integration tests can
+      # exercise the dashboard REST/SSE API in this offline stack.
+      REVOC_DASHBOARD__AUTH_MODE: none
+      # Admin key for /internal/emergency endpoints (port 8081). Falls back to
+      # "dev-admin-key" if unset (crates/revoc-proxy/src/handlers/emergency.rs),
+      # set explicitly here for clarity.
+      REVOC_ADMIN_KEY: dev-admin-key
+      # Disable the policy decision cache for integration tests. The cache
+      # key (crates/revoc-policy/src/cache.rs) is intentionally coarse
+      # (caller identity + finding-type/pattern summary + model, NOT the raw
+      # request body), so distinct test payloads that produce the same
+      # finding-type/pattern combination for the same caller/model can hash
+      # to the same key and return each other's cached PolicyDecision. That
+      # is an acceptable tradeoff for production traffic (same finding
+      # pattern -> same rule -> same decision) but breaks test isolation when
+      # many different payloads from the same default caller are fired in
+      # quick succession within the TTL. DecisionCache::get() only returns a
+      # hit when `stored_at.elapsed() < ttl`; with ttl=0 that is never true,
+      # so every request is freshly evaluated by the policy engine.
+      REVOC_POLICY__DECISION_CACHE_TTL_SECS: "0"
+    depends_on:
+      mock-llm:
+        condition: service_healthy
+      mock-mcp:
+        condition: service_healthy
+    networks:
+      - revoc-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Shadow-mode proxy (REVOC_POLICY__ENFORCEMENT_MODE=shadow) ────────────────
+  # Runs on port 8082 (proxy) / 8085 (internal). All governance is observe-only:
+  # effective_action is always Audit regardless of the policy decision.
+  # Used by test_shadow_mode.py to verify X-Revoc-Decision=shadow-block/audit.
+  revoc-proxy-shadow:
+    build:
+      context: ..
+      dockerfile: crates/revoc-proxy/Dockerfile
+    container_name: revoc-proxy-shadow
+    restart: "no"
+    ports:
+      - "8082:8080"
+      - "8085:8081"
+    environment:
+      REVOC_AUTH__MODE: none
+      REVOC_STORAGE__BACKEND: sqlite
+      REVOC_POLICY__ENGINE: native
+      REVOC_POLICY__ENFORCEMENT_MODE: shadow
+      REVOC_LOG_FORMAT: json
+      REVOC_SERVER__ENVIRONMENT: test
+      REVOC_UPSTREAM__MOCK_MODE: "false"
+      REVOC_UPSTREAM__PROVIDERS__0__NAME: openai
+      REVOC_UPSTREAM__PROVIDERS__0__BASE_URL: http://mock-llm:8080
+      REVOC_UPSTREAM__PROVIDERS__0__FORMAT: openai
+      REVOC_UPSTREAM__PROVIDERS__0__DEFAULT: "true"
+      REVOC_MCP__TRUSTED_SERVERS__0__ID: mock-mcp
+      REVOC_MCP__TRUSTED_SERVERS__0__URL: http://mock-mcp:8080/mcp
+      REVOC_DASHBOARD__AUTH_MODE: none
+      REVOC_ADMIN_KEY: dev-admin-key
+      REVOC_POLICY__DECISION_CACHE_TTL_SECS: "0"
+      REVOC_SERVER__DASHBOARD_PORT: "0"
+    depends_on:
+      mock-llm:
+        condition: service_healthy
+      mock-mcp:
+        condition: service_healthy
+    networks:
+      - revoc-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── JWT-auth proxy (REVOC_AUTH__MODE=jwt) ─────────────────────────────────
+  # Runs on port 8083. Verifies HS256 JWTs signed with REVOC_JWT_SECRET.
+  # Used by test_jwt_auth.py to verify valid/invalid/expired token handling.
+  revoc-proxy-jwt:
+    build:
+      context: ..
+      dockerfile: crates/revoc-proxy/Dockerfile
+    container_name: revoc-proxy-jwt
+    restart: "no"
+    ports:
+      - "8083:8080"
+    environment:
+      REVOC_AUTH__MODE: jwt
+      REVOC_AUTH__JWT_SECRET_ENV: REVOC_JWT_SECRET
+      REVOC_JWT_SECRET: test-jwt-secret-for-integration-tests
+      REVOC_STORAGE__BACKEND: sqlite
+      REVOC_POLICY__ENGINE: native
+      REVOC_LOG_FORMAT: json
+      REVOC_SERVER__ENVIRONMENT: test
+      REVOC_UPSTREAM__MOCK_MODE: "false"
+      REVOC_UPSTREAM__PROVIDERS__0__NAME: openai
+      REVOC_UPSTREAM__PROVIDERS__0__BASE_URL: http://mock-llm:8080
+      REVOC_UPSTREAM__PROVIDERS__0__FORMAT: openai
+      REVOC_UPSTREAM__PROVIDERS__0__DEFAULT: "true"
+      REVOC_MCP__TRUSTED_SERVERS__0__ID: mock-mcp
+      REVOC_MCP__TRUSTED_SERVERS__0__URL: http://mock-mcp:8080/mcp
+      REVOC_DASHBOARD__AUTH_MODE: none
+      REVOC_POLICY__DECISION_CACHE_TTL_SECS: "0"
+      REVOC_SERVER__DASHBOARD_PORT: "0"
+    depends_on:
+      mock-llm:
+        condition: service_healthy
+      mock-mcp:
+        condition: service_healthy
+    networks:
+      - revoc-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── OPA policy engine (for sidecar integration test) ─────────────────────
+  # Loads all REVOC Rego policies from policies/default/ at startup.
+  # Serves the governance decision at POST /v1/data/revoc/governance/main/decision.
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: revoc-opa
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --log-level=error
+      - /policies
+    volumes:
+      - ../policies/default:/policies:ro
+    ports:
+      - "8191:8181"
+    networks:
+      - revoc-test-net
+    # OPA latest is a minimal image with no shell, wget, or curl — standard
+    # CMD healthchecks are unavailable. The conftest docker_stack fixture
+    # polls http://localhost:8191/health directly via _wait_for() before
+    # yielding to any test, so container-level healthchecks are not needed.
+    # revoc-proxy-opa depends on service_started (not service_healthy) and
+    # retries OPA connections at startup if OPA isn't ready yet.
+
+  # ── OPA-sidecar proxy (REVOC_POLICY__ENGINE=sidecar) ─────────────────────
+  # Runs on port 8084. Delegates all policy decisions to the OPA container.
+  # Used by test_opa_sidecar.py.
+  revoc-proxy-opa:
+    build:
+      context: ..
+      dockerfile: crates/revoc-proxy/Dockerfile
+    container_name: revoc-proxy-opa
+    restart: "no"
+    ports:
+      - "8084:8080"
+    environment:
+      REVOC_AUTH__MODE: none
+      REVOC_STORAGE__BACKEND: sqlite
+      REVOC_POLICY__ENGINE: sidecar
+      REVOC_POLICY__OPA_URL: http://opa:8181
+      REVOC_POLICY__OPA_TIMEOUT_MS: "3000"
+      REVOC_LOG_FORMAT: json
+      REVOC_SERVER__ENVIRONMENT: test
+      REVOC_UPSTREAM__MOCK_MODE: "false"
+      REVOC_UPSTREAM__PROVIDERS__0__NAME: openai
+      REVOC_UPSTREAM__PROVIDERS__0__BASE_URL: http://mock-llm:8080
+      REVOC_UPSTREAM__PROVIDERS__0__FORMAT: openai
+      REVOC_UPSTREAM__PROVIDERS__0__DEFAULT: "true"
+      REVOC_MCP__TRUSTED_SERVERS__0__ID: mock-mcp
+      REVOC_MCP__TRUSTED_SERVERS__0__URL: http://mock-mcp:8080/mcp
+      REVOC_DASHBOARD__AUTH_MODE: none
+      REVOC_POLICY__DECISION_CACHE_TTL_SECS: "0"
+      REVOC_SERVER__DASHBOARD_PORT: "0"
+    depends_on:
+      mock-llm:
+        condition: service_healthy
+      mock-mcp:
+        condition: service_healthy
+      opa:
+        condition: service_started
+    networks:
+      - revoc-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Stub LLM upstream (OpenAI-compatible) ──────────────────────────────────
+  mock-llm:
+    image: wiremock/wiremock:3.9.1
+    container_name: revoc-mock-llm
+    command: ["--port", "8080", "--global-response-templating"]
+    ports:
+      - "8089:8080"
+    volumes:
+      - ./wiremock/mock-llm:/home/wiremock:ro
+    networks:
+      - revoc-test-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/__admin/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Stub MCP server upstream ────────────────────────────────────────────────
+  mock-mcp:
+    image: wiremock/wiremock:3.9.1
+    container_name: revoc-mock-mcp
+    command: ["--port", "8080", "--global-response-templating"]
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./wiremock/mock-mcp:/home/wiremock:ro
+    networks:
+      - revoc-test-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/__admin/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  revoc-test-net:
+    driver: bridge

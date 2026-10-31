@@ -1,0 +1,45 @@
+[package]
+name = "revoc-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "fuzz_detector_input"
+path = "fuzz_targets/fuzz_detector_input.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_mcp_parser"
+path = "fuzz_targets/fuzz_mcp_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_redaction"
+path = "fuzz_targets/fuzz_redaction.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_normalization"
+path = "fuzz_targets/fuzz_normalization.rs"
+test = false
+doc = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+revoc-core = { path = "../crates/revoc-core" }
+revoc-detector = { path = "../crates/revoc-detector" }
+revoc-redaction = { path = "../crates/revoc-redaction" }
+revoc-telemetry = { path = "../crates/revoc-telemetry" }
+tokio = { version = "1.40", features = ["full"] }
+bytes = "1.7"
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v7", "serde"] }

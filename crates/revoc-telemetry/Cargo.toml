@@ -1,0 +1,25 @@
+[package]
+name    = "revoc-telemetry"
+version = "0.1.0"
+edition = "2021"
+description = "OpenTelemetry tracing, Prometheus metrics, and structured logging for REVOC"
+license = "Apache-2.0"
+repository = "https://github.com/revoc-ai/revoc"
+
+[dependencies]
+revoc-core                         = { path = "../revoc-core" }
+revoc-config                       = { path = "../revoc-config" }
+opentelemetry                      = { workspace = true }
+opentelemetry_sdk                  = { workspace = true }
+opentelemetry-otlp                 = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
+tracing                            = { workspace = true }
+tracing-subscriber                 = { workspace = true }
+tracing-opentelemetry              = { workspace = true }
+prometheus                         = { workspace = true }
+once_cell                          = { workspace = true }
+tokio                              = { workspace = true }
+
+[dev-dependencies]
+tokio      = { workspace = true }
+tokio-test = { workspace = true }

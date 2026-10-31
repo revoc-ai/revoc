@@ -1,0 +1,100 @@
+# REVOC Policy — GDPR Baseline
+#
+# Protects personal data of EU data subjects in AI workloads under GDPR.
+# Focuses on data minimization (Art. 5(1)(c)) and storage limitation (Art. 5(1)(e)).
+# All personal identifiers are masked or removed before reaching the LLM.
+#
+# Apply with:
+#   curl -X POST http://localhost:8081/internal/policies \
+#     -H "Content-Type: application/yaml" \
+#     -H "X-Admin-Key: $REVOC_ADMIN_KEY" \
+#     --data-binary @gdpr-baseline.yaml
+
+name: gdpr-baseline
+version: "1.0"
+environment: production
+profile: gdpr
+description: >
+  GDPR personal data minimization baseline. All EU personal identifiers are
+  masked or removed from AI prompts and responses. Data subjects' right to
+  erasure (Art. 17) is supported via audit log anonymization after retention period.
+
+rules:
+  # Personal identifiers — masked (data minimization, Art. 5(1)(c))
+  - rule_id: pii_email_v1
+    action: mask
+    enforcement_mode: enforce
+    description: >
+      Mask email addresses as [EMAIL_ADDRESS].
+      GDPR Art. 4(1): email is personal data of an identifiable natural person.
+
+  - rule_id: pii_phone_v1
+    action: mask
+    enforcement_mode: enforce
+    description: Mask phone numbers as [PHONE_NUMBER].
+
+  - rule_id: pii_ip_address_v1
+    action: mask
+    enforcement_mode: enforce
+    description: >
+      Mask IP addresses. CJEU ruling C-582/14 (Breyer): dynamic IPs are personal
+      data when the data controller can link them to the subscriber.
+
+  # High-sensitivity identifiers — removed entirely
+  - rule_id: pii_ssn_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove national identification numbers (SSN/NIN equivalents).
+
+  - rule_id: pii_dob_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove dates of birth.
+
+  - rule_id: pii_passport_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove passport numbers.
+
+  - rule_id: pii_driver_license_v1
+    action: mask
+    enforcement_mode: enforce
+    description: Mask driver license numbers.
+
+  # Financial data
+  - rule_id: pii_credit_card_v1
+    action: remove
+    enforcement_mode: enforce
+
+  - rule_id: pii_iban_v1
+    action: remove
+    enforcement_mode: enforce
+
+  - rule_id: pii_bank_account_v1
+    action: remove
+    enforcement_mode: enforce
+
+  # Special category data (GDPR Art. 9) — health data
+  - rule_id: pii_mrn_v1
+    action: remove
+    enforcement_mode: enforce
+    description: >
+      Remove medical record numbers. GDPR Art. 9 classifies health data as
+      special category — processing requires explicit consent or legal basis.
+
+  # Secrets
+  - rule_id: secret_block_v1
+    action: block
+    enforcement_mode: enforce
+
+  # Token quota
+  - rule_id: token_quota_v1
+    action: block
+    enforcement_mode: enforce
+    parameters:
+      max_tokens_per_hour: 500000
+      max_tokens_per_day: 5000000
+
+# GDPR Art. 5(1)(e) storage limitation — personal data not kept longer than necessary
+# 90 days is the default; adjust based on your Article 30 record of processing activities
+audit_retention_days: 90

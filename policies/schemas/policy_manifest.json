@@ -1,0 +1,283 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://revoc.io/schemas/policy-manifest/v1",
+  "title": "REVOC Policy Manifest",
+  "description": "Schema for REVOC policy manifest YAML files (apiVersion: revoc.io/v1, kind: PolicyManifest).",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "revoc.io/v1",
+      "description": "REVOC API version. Must be 'revoc.io/v1'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "PolicyManifest",
+      "description": "Resource kind. Must be 'PolicyManifest'."
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "org_id"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9\\-]{0,62}[a-z0-9]$",
+          "description": "Unique policy manifest name (kebab-case)."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Semantic version of this manifest."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Human-readable summary of this policy manifest."
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["development", "staging", "production", "test"],
+          "description": "Target deployment environment."
+        },
+        "org_id": {
+          "type": "string",
+          "description": "Organization identifier this manifest applies to."
+        },
+        "contact": {
+          "type": "string",
+          "description": "Responsible owner contact (email or team name)."
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Arbitrary key-value labels for grouping and filtering."
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Non-identifying metadata (ticket IDs, documentation URLs, etc.)."
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": ["hipaa", "pci-dss", "gdpr", "soc2", "financial-services", "internal-dev"],
+          "description": "Compliance profile to activate. Omit for default profile only."
+        },
+        "enforcement": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["enforce", "shadow"],
+              "default": "enforce",
+              "description": "Shadow mode audits without blocking; enforce mode is active governance."
+            },
+            "fail_open": {
+              "type": "boolean",
+              "default": false,
+              "description": "MUST be false in production. fail_open=true allows traffic when policy engine fails."
+            }
+          }
+        },
+        "governance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 10,
+              "description": "Maximum agent recursion depth before returning 503 (D9)."
+            }
+          }
+        },
+        "detection": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "normalize_before_scan": {
+              "type": "boolean",
+              "default": true,
+              "description": "NFKC + zero-width normalization before every regex pass (D8). Must be true."
+            },
+            "regex_enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "onnx_enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable ONNX NER model. Requires ml image."
+            },
+            "decode_base64_args": {
+              "type": "boolean",
+              "default": true
+            },
+            "decode_url_encoded_args": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "model_restrictions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allowed_models": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "Exhaustive list of permitted model identifiers."
+            }
+          }
+        },
+        "mcp_tool_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": ["allow", "block", "audit"]
+              },
+              "allowed_teams": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "blocked_environments": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          },
+          "description": "Per-tool overrides for MCP ACL. Keys are tool names from data.json."
+        },
+        "quotas": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tokens_per_request": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "tokens_per_minute": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "requests_per_minute": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "description": "Token/request quotas. Key is caller_id or 'default'."
+        },
+        "upstream": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "type": "string",
+              "description": "Default upstream provider name matching revoc.toml [[upstream.providers]]."
+            },
+            "mock_mode": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "buffer_output": {
+              "type": "boolean",
+              "default": false,
+              "description": "Buffer full streaming response before governance scan (compliance mode)."
+            },
+            "sliding_window_size": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 4096,
+              "default": 256
+            }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "retention_days": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 90
+            },
+            "include_findings": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include finding types (NOT values) in audit events."
+            },
+            "include_model": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "dashboard": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "webhooks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["block", "redact", "audit", "quota_exceeded", "kill_switch"]
+              }
+            },
+            "min_severity": {
+              "type": "string",
+              "enum": ["info", "low", "medium", "high", "critical"],
+              "default": "high"
+            },
+            "cooldown_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 5
+            }
+          }
+        }
+      }
+    }
+  }
+}

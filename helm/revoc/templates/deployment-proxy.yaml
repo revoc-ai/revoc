@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "revoc.proxy.fullname" . }}
+  labels:
+    {{- include "revoc.proxy.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.proxy.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.proxy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.proxy.rollingUpdate.maxSurge }}
+  selector:
+    matchLabels:
+      {{- include "revoc.proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "revoc.proxy.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-proxy.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "revoc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.proxy.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.proxy.terminationGracePeriodSeconds }}
+      containers:
+        - name: revoc-proxy
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.proxy.image.repository }}:{{ .Values.proxy.image.tag }}"
+          imagePullPolicy: {{ .Values.proxy.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.proxy.securityContext | nindent 12 }}
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.proxy.ports.proxy }}
+              protocol: TCP
+            - name: dashboard
+              containerPort: {{ .Values.proxy.ports.dashboard }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.proxy.ports.metrics }}
+              protocol: TCP
+            - name: internal
+              containerPort: {{ .Values.proxy.ports.internal }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "revoc.proxy.fullname" . }}-config
+            - secretRef:
+                name: {{ include "revoc.secretName" . }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.proxy.probes.startup.path }}
+              port: proxy
+            initialDelaySeconds: {{ .Values.proxy.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.proxy.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.proxy.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.proxy.probes.readiness.path }}
+              port: proxy
+            initialDelaySeconds: {{ .Values.proxy.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.proxy.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.proxy.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.proxy.probes.liveness.path }}
+              port: proxy
+            initialDelaySeconds: {{ .Values.proxy.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.proxy.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.proxy.probes.liveness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.proxy.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: policies
+              mountPath: /policies/custom
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: policies
+          configMap:
+            name: {{ include "revoc.fullname" . }}-policies
+      {{- with .Values.proxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.proxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.proxy.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

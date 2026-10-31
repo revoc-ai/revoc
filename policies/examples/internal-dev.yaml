@@ -1,0 +1,86 @@
+# REVOC Policy Manifest — Internal Development
+# ---------------------------------------------------------------------------
+# Relaxed profile for internal engineering teams building with LLMs and MCP.
+# PII and secrets are audited (not blocked) to allow developer iteration.
+# Safety floor rules (DDL, injection, SSRF, path traversal) remain active.
+#
+# WARNING: Do NOT use this manifest for production or any customer data.
+#
+# Apply via:
+#   revoc-gateway policy apply --file internal-dev.yaml --env development
+#
+# Note: the top-level key (internal_dev) is required so that OPA can load
+# all example files from the same directory without key conflicts.
+# ---------------------------------------------------------------------------
+
+internal_dev:
+  apiVersion: revoc.io/v1
+  kind: PolicyManifest
+  metadata:
+    name: internal-dev
+    version: "1.0.0"
+    description: "Internal dev profile — audits PII/secrets, blocks security threats"
+    environment: development
+    org_id: "${ORG_ID}"
+
+  spec:
+    profile: internal-dev
+
+    enforcement:
+      mode: shadow
+      fail_open: false
+
+    governance:
+      max_depth: 10
+
+    detection:
+      normalize_before_scan: true
+      regex_enabled: true
+      onnx_enabled: false
+      decode_base64_args: true
+      decode_url_encoded_args: true
+
+    model_restrictions:
+      allowed_models:
+        - "gpt-4o"
+        - "gpt-4o-mini"
+        - "gpt-4o-2024-08-06"
+        - "claude-3-5-sonnet"
+        - "claude-3-haiku-20240307"
+        - "o1-mini"
+
+    mcp_tool_overrides:
+      execute_shell:
+        blocked_environments:
+          - production
+      execute_sql:
+        allowed_teams:
+          - backend
+          - data-engineering
+          - devops
+      delete_s3_object:
+        allowed_teams:
+          - backend
+          - devops
+          - platform
+
+    quotas:
+      default:
+        tokens_per_request: 200000
+        tokens_per_minute: 1000000
+
+    upstream:
+      provider: openai
+      mock_mode: false
+
+    audit:
+      enabled: true
+      retention_days: 30
+      include_findings: true
+      include_model: true
+
+    dashboard:
+      enabled: true
+
+    webhooks:
+      enabled: false

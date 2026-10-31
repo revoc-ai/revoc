@@ -1,0 +1,73 @@
+{{- if .Values.admin.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "revoc.admin.fullname" . }}
+  labels:
+    {{- include "revoc.admin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.admin.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "revoc.admin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "revoc.admin.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "revoc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.admin.podSecurityContext | nindent 8 }}
+      containers:
+        - name: revoc-admin-api
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.admin.image.repository }}:{{ .Values.admin.image.tag }}"
+          imagePullPolicy: {{ .Values.admin.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.admin.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.admin.port }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "revoc.secretName" . }}
+          env:
+            - name: REVOC_ADMIN__LOG_LEVEL
+              value: {{ .Values.telemetry.logLevel | quote }}
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.admin.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,141 @@
+site_name: REVOC
+site_description: Runtime Execution Validation & Observability Control — governance proxy for AI traffic
+site_url: https://revoc.io
+repo_url: https://github.com/revoc-ai/revoc
+repo_name: revoc-ai/revoc
+edit_uri: edit/main/docs/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.png
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - toc.integrate
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+plugins:
+  - search:
+      lang: en
+  - mermaid2:
+      arguments:
+        theme: auto
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/quickstart.md
+      - getting-started/docker-compose.md
+      - getting-started/environment-variables.md
+      - getting-started/troubleshooting.md
+  - Concepts:
+      - concepts/architecture.md
+      - concepts/governance-pipeline.md
+      - concepts/normalization.md
+      - concepts/governance-depth.md
+      - concepts/bidirectional-governance.md
+      - concepts/session-tracking.md
+  - Default Rules:
+      - default-rules/overview.md
+      - default-rules/pii-rules.md
+      - default-rules/secret-rules.md
+      - default-rules/security-rules.md
+  - Configuration:
+      - configuration/reference.md
+      - configuration/auth.md
+      - configuration/upstream-providers.md
+      - configuration/detection.md
+      - configuration/storage.md
+  - Policies:
+      - policies/authoring.md
+      - policies/compliance-profiles.md
+      - policies/conflict-resolution.md
+      - policies/wasm-policies.md
+  - Framework Integrations:
+      - framework-integrations/langchain.md
+      - framework-integrations/llamaindex.md
+      - framework-integrations/autogen.md
+      - framework-integrations/crewai.md
+  - MCP Governance:
+      - concepts/mcp-governance.md
+      - concepts/tool-manifest-analysis.md
+  - Shadow Mode:
+      - shadow-mode/overview.md
+  - Operations:
+      - operations/emergency-kill-switch.md
+      - operations/health-checks.md
+      - operations/metrics.md
+  - Observability:
+      - observability/dashboard.md
+      - observability/audit-log.md
+      - observability/opentelemetry.md
+  - Security:
+      - security/telemetry-policy.md
+      - security/threat-model.md
+      - security/compliance.md
+  - Deployment:
+      - deployment/single-container.md
+      - deployment/docker-compose.md
+      - deployment/kubernetes-helm.md
+  - SDK:
+      - sdk/python.md
+      - sdk/node.md
+  - API Reference:
+      - api-reference/proxy-headers.md
+      - api-reference/admin-api.md
+      - api-reference/internal-api.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/revoc-ai/revoc
+    - icon: fontawesome/brands/docker
+      link: https://ghcr.io/revoc-ai/revoc
+  version:
+    provider: mike

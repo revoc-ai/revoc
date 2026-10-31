@@ -1,0 +1,6 @@
+[advisories]
+# RUSTSEC-2023-0071 (rsa, Marvin attack): no fixed release exists. rsa is in
+# Cargo.lock only via sqlx-mysql; the mysql feature is never enabled, so rsa is
+# never compiled (`cargo tree -i rsa --workspace --target all` is empty).
+# Mirrors the ignore in deny.toml.
+ignore = ["RUSTSEC-2023-0071"]

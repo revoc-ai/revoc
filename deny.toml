@@ -1,0 +1,70 @@
+# cargo-deny configuration — https://embarkstudios.github.io/cargo-deny/
+# Schema: cargo-deny ≥0.14 (PR #611 removed string-valued advisory/license keys)
+# Run: cargo deny check
+
+[graph]
+all-features = false
+no-default-features = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# License policy
+# ─────────────────────────────────────────────────────────────────────────────
+[licenses]
+# Anything not in this allow list is implicitly denied.
+# GPL/AGPL/LGPL are excluded by omission — no separate deny list needed.
+allow = [
+    "Apache-2.0",
+    # wasmtime / cranelift-* / regalloc2 / target-lexicon / ar_archive_writer
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    # icu_* family (ICU4X) pulled in via url → idna → idna_adapter; unicode-ident compound
+    "Unicode-3.0",
+    # foldhash (via hashbrown)
+    "Zlib",
+    # tiny-keccak (via const-random → config)
+    "CC0-1.0",
+    # webpki-roots (via sqlx-core + reqwest/hyper-rustls)
+    "CDLA-Permissive-2.0",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Crate bans
+# ─────────────────────────────────────────────────────────────────────────────
+[bans]
+multiple-versions = "warn"
+
+deny = [
+    # openssl — REVOC uses rustls exclusively; no C FFI in the TLS stack
+    { name = "openssl" },
+    { name = "openssl-sys" },
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Advisory database (security vulnerabilities)
+# In cargo-deny ≥0.14: vulnerability/yanked are always-deny by default;
+# unmaintained scope controls which unmaintained advisories trigger.
+# ─────────────────────────────────────────────────────────────────────────────
+[advisories]
+db-path  = "~/.cargo/advisory-db"
+db-urls  = ["https://github.com/rustsec/advisory-db"]
+# "workspace" = flag unmaintained crates that the workspace directly depends on
+unmaintained = "workspace"
+
+ignore = [
+    # RUSTSEC-2023-0071: Marvin timing attack in rsa. No fixed release exists.
+    # rsa appears in Cargo.lock only through sqlx-mysql, which sqlx-macros
+    # records for every driver; the mysql feature is never enabled, so rsa is
+    # never compiled into any REVOC binary (`cargo tree -i rsa` is empty).
+    { id = "RUSTSEC-2023-0071" },
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Source policy — only allow crates from crates.io + the workspace itself
+# ─────────────────────────────────────────────────────────────────────────────
+[sources]
+unknown-registry = "deny"
+unknown-git      = "deny"
+allow-registry   = ["https://github.com/rust-lang/crates.io-index"]

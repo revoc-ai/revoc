@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REVOC Helm chart — Tier 3 production overrides.
+#   helm install revoc ./helm/revoc -f helm/revoc/values.production.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+proxy:
+  replicaCount: 3
+  terminationGracePeriodSeconds: 150
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+admin:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+  tls:
+    - secretName: revoc-tls
+      hosts:
+        - revoc.example.com
+
+policy:
+  engine: sidecar
+  enforcementMode: enforce
+  failOpen: false
+
+telemetry:
+  otlpEndpoint: "http://otel-collector.observability:4317"
+  sampleRate: 0.25
+  logLevel: info
+  logFormat: json
+
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+
+redis:
+  enabled: true
+  architecture: replication
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 8Gi
+
+networkPolicy:
+  enabled: true

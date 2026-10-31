@@ -1,0 +1,31 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/list')]" },
+      { "matchesJsonPath": "$[?(@.id == 'clean-check')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "jsonrpc": "2.0",
+      "id": "clean-check",
+      "result": {
+        "tools": [
+          {
+            "name": "calculator",
+            "description": "Evaluate a basic arithmetic expression.",
+            "inputSchema": {
+              "type": "object",
+              "properties": { "expression": { "type": "string" } }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

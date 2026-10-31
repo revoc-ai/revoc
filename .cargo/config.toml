@@ -1,0 +1,57 @@
+[build]
+# Workspace-wide Clippy lints applied at compile time.
+# -W clippy::all        — enable all Clippy lints
+# -W clippy::pedantic   — enable pedantic lints (style + correctness)
+# -A clippy::module_name_repetitions — allow e.g. RevocError in revoc_core
+# -A clippy::must_use_candidate      — suppress noisy must_use suggestions
+rustflags = [
+    "-W", "clippy::all",
+    "-W", "clippy::pedantic",
+    "-A", "clippy::module_name_repetitions",
+    "-A", "clippy::must_use_candidate",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cargo aliases — short forms for common workspace operations
+# ─────────────────────────────────────────────────────────────────────────────
+[alias]
+# t  — run all tests with nextest (faster parallel runner)
+t     = "nextest run --workspace"
+# b  — build the entire workspace in dev mode
+b     = "build --workspace"
+# c  — run clippy across the workspace; -D warnings = fail on any warning
+c     = "clippy --workspace -- -D warnings"
+# bench — run all criterion benchmarks
+bench = "bench --workspace"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Environment variables injected for every cargo invocation
+# ─────────────────────────────────────────────────────────────────────────────
+[env]
+# Show full backtraces for panics in test/debug runs
+RUST_BACKTRACE = "1"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Target-specific flags
+# ─────────────────────────────────────────────────────────────────────────────
+
+# x86_64 Linux — use lld for faster incremental linking when available.
+# lld is provided by the llvm-tools-preview component (pinned in rust-toolchain.toml).
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-W", "clippy::all",
+    "-W", "clippy::pedantic",
+    "-A", "clippy::module_name_repetitions",
+    "-A", "clippy::must_use_candidate",
+    "-C", "link-arg=-fuse-ld=lld",
+]
+
+# aarch64 Linux (CI cross-compile / Apple Silicon Linux containers).
+# Does not add lld — standard linker is sufficient on ARM.
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    "-W", "clippy::all",
+    "-W", "clippy::pedantic",
+    "-A", "clippy::module_name_repetitions",
+    "-A", "clippy::must_use_candidate",
+]

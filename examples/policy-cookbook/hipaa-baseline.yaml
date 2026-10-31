@@ -1,0 +1,94 @@
+# REVOC Policy — HIPAA Baseline
+#
+# Applies the full HIPAA Protected Health Information (PHI) ruleset.
+# All 18 HIPAA identifiers are either removed or masked before reaching the LLM.
+# Token quota is set conservatively for healthcare workloads.
+#
+# Apply with:
+#   curl -X POST http://localhost:8081/internal/policies \
+#     -H "Content-Type: application/yaml" \
+#     -H "X-Admin-Key: $REVOC_ADMIN_KEY" \
+#     --data-binary @hipaa-baseline.yaml
+
+name: hipaa-baseline
+version: "1.0"
+environment: production
+profile: hipaa
+description: >
+  HIPAA PHI protection baseline. Removes or masks all 18 HIPAA identifiers.
+  Medical record numbers, dates of birth, SSNs, and patient identifiers are
+  removed entirely. Email addresses and phone numbers are masked.
+
+rules:
+  # PHI removal — identifiers that uniquely identify a patient
+  - rule_id: pii_mrn_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove medical record numbers from all LLM requests and responses.
+
+  - rule_id: pii_ssn_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove US Social Security Numbers.
+
+  - rule_id: pii_dob_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove dates of birth.
+
+  - rule_id: pii_credit_card_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove credit card numbers (Luhn-validated).
+
+  - rule_id: pii_iban_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove IBAN bank account numbers.
+
+  - rule_id: pii_bank_account_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove bank account numbers.
+
+  - rule_id: pii_passport_v1
+    action: remove
+    enforcement_mode: enforce
+    description: Remove US passport numbers.
+
+  # PHI masking — contact identifiers
+  - rule_id: pii_email_v1
+    action: mask
+    enforcement_mode: enforce
+    description: Mask email addresses as [EMAIL_ADDRESS].
+
+  - rule_id: pii_phone_v1
+    action: mask
+    enforcement_mode: enforce
+    description: Mask phone numbers as [PHONE_NUMBER].
+
+  - rule_id: pii_ip_address_v1
+    action: mask
+    enforcement_mode: enforce
+    description: Mask IP addresses as [IP_ADDRESS].
+
+  - rule_id: pii_driver_license_v1
+    action: mask
+    enforcement_mode: enforce
+    description: Mask driver license numbers.
+
+  # Token quota — conservative for regulated healthcare workloads
+  - rule_id: token_quota_v1
+    action: block
+    enforcement_mode: enforce
+    parameters:
+      max_tokens_per_hour: 200000
+      max_tokens_per_day: 2000000
+    description: >
+      Conservative token quota for HIPAA-regulated AI workloads.
+      Adjust per-org via the admin API based on your BAA scope.
+
+# Buffer streaming responses — required for HIPAA to ensure full inspection
+# before any response content is returned to the application.
+# Override with: REVOC_STREAM__BUFFER_OUTPUT=true
+stream_buffer_output: true

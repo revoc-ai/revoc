@@ -1,0 +1,246 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ── Rust — fmt, clippy, test, doc (matrix: ubuntu + macos) ───────────────────
+  check-rust:
+    name: Rust / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: build
+        run: cargo build --workspace --release
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace -- -D warnings
+      - name: test
+        run: cargo test --workspace --all-features
+      - name: doc
+        run: cargo doc --workspace --no-deps
+
+  # ── REVOC D8 — normalization must have zero FAILED tests ─────────────────────
+  check-normalization:
+    name: Rust / normalization (D8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ubuntu-cargo-norm-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ubuntu-cargo-
+      - name: Run normalization tests
+        run: |
+          cargo test -p revoc-detector normalization -- --nocapture 2>&1 \
+            | tee /tmp/norm-output.txt
+          FAILED=$(grep -c "^FAILED" /tmp/norm-output.txt || true)
+          echo "Failed normalization tests: $FAILED"
+          [ "$FAILED" -eq 0 ]
+
+  # ── Python — admin-api + sdk/python (lint, type-check, test) ─────────────────
+  check-python:
+    name: Python / admin-api + sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      # admin-api
+      - name: Install admin-api
+        working-directory: admin-api
+        run: pip install -e ".[dev]"
+      - name: Ruff — admin-api
+        working-directory: admin-api
+        run: ruff check .
+      - name: Mypy — admin-api
+        working-directory: admin-api
+        run: mypy app/ --strict
+      - name: Pytest — admin-api
+        working-directory: admin-api
+        run: pytest tests/ --cov=app --cov-fail-under=85
+
+      # sdk/python
+      - name: Install sdk/python
+        working-directory: sdk/python
+        run: pip install -e ".[dev]"
+      - name: Ruff — sdk/python
+        working-directory: sdk/python
+        run: ruff check .
+      - name: Mypy — sdk/python
+        working-directory: sdk/python
+        run: mypy revoc_sdk/ --strict
+      - name: Pytest — sdk/python
+        working-directory: sdk/python
+        run: pytest
+
+  # ── Node — sdk/node (install, build, test) ────────────────────────────────────
+  check-node:
+    name: Node / sdk
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/node
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sdk/node/package-lock.json
+      - run: npm install
+      - run: npm run build
+      - run: npm test
+
+  # ── OPA — policy check + test + coverage ─────────────────────────────────────
+  check-rego:
+    name: OPA / policies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+      - run: opa check policies/ --strict
+      - run: opa test policies/ -v --coverage
+
+  # ── Dashboard — React build; committed dist must match CI build output ────────
+  check-dashboard-build:
+    name: Dashboard / UI build + dist integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: crates/revoc-dashboard/ui/package-lock.json
+      - name: Install
+        working-directory: crates/revoc-dashboard/ui
+        run: npm install
+      - name: Build
+        working-directory: crates/revoc-dashboard/ui
+        run: npm run build
+      - name: Committed dist matches build output
+        run: git diff --exit-code crates/revoc-dashboard/ui/dist/
+
+  # ── Helm — lint, template, kubectl dry-run ────────────────────────────────────
+  check-helm:
+    name: Helm / lint + template + dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Lint
+        run: helm lint helm/revoc/
+      - name: Template
+        run: helm template revoc helm/revoc/ > /tmp/revoc-manifest.yaml
+      - name: Kubectl dry-run
+        run: kubectl apply --dry-run=client -f /tmp/revoc-manifest.yaml
+
+  # ── Security — audit, deny, pip-audit, trivy ─────────────────────────────────
+  security:
+    name: Security / audit + scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ubuntu-cargo-sec-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ubuntu-cargo-
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --deny warnings
+      - name: cargo deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --workspace --all-features
+          command: check
+          command-arguments: --config deny.toml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit — admin-api
+        working-directory: admin-api
+        run: |
+          pip install pip-audit
+          pip install -e .
+          pip-audit --strict --progress-spinner=off
+      - name: pip-audit — sdk/python
+        working-directory: sdk/python
+        run: |
+          pip install pip-audit
+          pip install -e .
+          pip-audit --strict --progress-spinner=off
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+  # ── Integration tests — needs Rust + Python + Rego green ─────────────────────
+  integration-test:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: [check-rust, check-python, check-rego]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio httpx
+      - uses: docker/setup-buildx-action@v3
+      - name: Pre-build test image (layer cache)
+        run: docker compose -f docker/docker-compose.test.yml build
+      - name: Run integration tests
+        # conftest.py docker_stack fixture owns the full stack lifecycle:
+        # it runs "docker compose up -d --build", waits for health (180 s),
+        # runs all tests, then tears down with "docker compose down -v".
+        run: pytest tests/integration/ -v

@@ -1,0 +1,23 @@
+[package]
+name    = "revoc-config"
+version = "0.1.0"
+edition = "2021"
+description = "Configuration schema, loading, and validation for REVOC"
+license = "Apache-2.0"
+repository = "https://github.com/revoc-ai/revoc"
+
+[dependencies]
+revoc-core  = { path = "../revoc-core" }
+config      = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+once_cell   = { workspace = true }
+url         = { workspace = true }
+
+[dev-dependencies]
+tokio          = { workspace = true }
+tokio-test     = { workspace = true }
+assert_matches = { workspace = true }
+tempfile       = "3"

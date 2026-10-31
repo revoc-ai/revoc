@@ -1,0 +1,29 @@
+apiVersion: v2
+name: revoc
+description: REVOC — Runtime Execution Validation & Observability Control
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://revoc.io
+sources:
+  - https://github.com/revoc-ai/revoc
+keywords:
+  - ai
+  - llm
+  - governance
+  - security
+  - proxy
+  - observability
+maintainers:
+  - name: REVOC Maintainers
+    url: https://revoc.io
+icon: https://revoc.io/icon.png
+dependencies:
+  - name: postgresql
+    version: "15.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "19.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

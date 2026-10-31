@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(opa:*)",
+      "Bash(docker:*)",
+      "Bash(docker-compose:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(helm:*)",
+      "Bash(kubectl:*)",
+      "Bash(mkdocs:*)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(cp:*)",
+      "Bash(curl:*)",
+      "Bash(git:*)",
+      "Bash(alembic:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pip:*)",
+      "Bash(pip3:*)",
+      "Bash(jq:*)",
+      "Bash(echo:*)",
+      "Bash(sleep:*)",
+      "Bash(make:*)"
+    ]
+  }
+}

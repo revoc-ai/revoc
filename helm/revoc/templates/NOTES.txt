@@ -1,0 +1,71 @@
+REVOC — Runtime Execution Validation & Observability Control
+has been deployed as "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+──────────────────────────────────────────────────────────────────────────────
+Proxy endpoint (point your AI clients here)
+──────────────────────────────────────────────────────────────────────────────
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  https://{{ .host }}
+{{- end }}
+{{- else }}
+  Run inside the cluster:
+    http://{{ include "revoc.proxy.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.proxy.ports.proxy }}
+
+  Port-forward for local access:
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "revoc.proxy.fullname" . }} {{ .Values.proxy.ports.proxy }}:{{ .Values.proxy.ports.proxy }}
+    export REVOC_BASE_URL=http://localhost:{{ .Values.proxy.ports.proxy }}
+{{- end }}
+
+Zero-code-change governance — point existing SDKs at REVOC:
+    export REVOC_BASE_URL=http://<proxy-host>:{{ .Values.proxy.ports.proxy }}
+
+──────────────────────────────────────────────────────────────────────────────
+Dashboard
+──────────────────────────────────────────────────────────────────────────────
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  https://{{ .host }}/dashboard
+{{- end }}
+{{- else }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "revoc.proxy.fullname" . }} {{ .Values.proxy.ports.dashboard }}:{{ .Values.proxy.ports.dashboard }}
+  open http://localhost:{{ .Values.proxy.ports.dashboard }}
+{{- end }}
+
+──────────────────────────────────────────────────────────────────────────────
+Emergency kill-switch (internal port {{ .Values.proxy.ports.internal }} — never exposed via Ingress)
+──────────────────────────────────────────────────────────────────────────────
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "revoc.proxy.fullname" . }}-internal {{ .Values.proxy.ports.internal }}:{{ .Values.proxy.ports.internal }}
+
+  # Activate (stops ALL traffic across every instance within ~50ms):
+  curl -s -X POST http://localhost:{{ .Values.proxy.ports.internal }}/internal/emergency/kill-switch/activate \
+    -H "X-Admin-Key: <REVOC_AUTH__ADMIN_KEY>" -H "Content-Type: application/json" \
+    -d '{"scope":"global","reason":"incident-response","activated_by":"oncall"}'
+
+  # Status:
+  curl -s http://localhost:{{ .Values.proxy.ports.internal }}/internal/emergency/kill-switch/status \
+    -H "X-Admin-Key: <REVOC_AUTH__ADMIN_KEY>"
+
+  # Deactivate:
+  curl -s -X POST http://localhost:{{ .Values.proxy.ports.internal }}/internal/emergency/kill-switch/deactivate \
+    -H "X-Admin-Key: <REVOC_AUTH__ADMIN_KEY>" -H "Content-Type: application/json" \
+    -d '{"scope":"global"}'
+
+  Or via the CLI from a proxy pod:
+    kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "revoc.proxy.fullname" . }} -- \
+      revoc-proxy emergency activate --scope global --reason "incident-response" --admin-key <ADMIN_KEY>
+
+──────────────────────────────────────────────────────────────────────────────
+Governance status
+──────────────────────────────────────────────────────────────────────────────
+  Replicas:            {{ .Values.proxy.replicaCount }}{{ if .Values.autoscaling.enabled }} (autoscaling {{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }}){{ end }}
+  Max governance depth: {{ .Values.governance.maxDepth }}
+  Kill-switch enabled:  {{ .Values.killSwitch.enabled }}
+  Normalize before scan:{{ .Values.detection.normalizeBeforeScan }}
+  Tool manifest analysis:{{ .Values.mcp.analyzeToolManifests }}
+  Policy engine:        {{ .Values.policy.engine }}
+  fail_open:            {{ .Values.policy.failOpen }}  (MUST remain false in production)
+
+Remember to rotate the default admin key and API keys in `secrets.adminKey`
+and `secrets.apiKeys` (or supply `secrets.existingSecret`) before exposing
+this release to production traffic.

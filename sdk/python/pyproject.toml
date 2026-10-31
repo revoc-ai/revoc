@@ -1,0 +1,61 @@
+[project]
+name = "revoc-sdk"
+version = "1.0.0"
+description = "Zero-code-change governance SDK for REVOC — drop-in OpenAI client wrapper."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "REVOC" }]
+keywords = ["ai", "governance", "llm", "proxy", "security", "pii", "redaction", "openai"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "openai>=1.50",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[project.urls]
+Homepage = "https://revoc.io"
+Documentation = "https://revoc.io"
+Repository = "https://github.com/revoc-ai/revoc"
+"Bug Tracker" = "https://github.com/revoc-ai/revoc/issues"
+Changelog = "https://github.com/revoc-ai/revoc/blob/main/CHANGELOG.md"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["revoc_sdk"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DTZ"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

@@ -1,0 +1,100 @@
+name: Bug report
+description: Report a defect in REVOC (proxy, dashboard, admin API, SDKs, Helm chart, or policies)
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please search existing issues first to avoid duplicates.
+        **Do not include real PII, secrets, or production data in this report** — REVOC's own audit log never stores values, and neither should this form.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug and what you expected instead.
+      placeholder: When I send a chat completion request with X, REVOC returns Y instead of Z.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      multiple: true
+      options:
+        - revoc-proxy (Rust gateway)
+        - revoc-dashboard
+        - admin-api (revoc-gateway)
+        - Python SDK (revoc-sdk)
+        - Node SDK (@revoc-io/sdk)
+        - Policies (Rego / native rules)
+        - Helm chart
+        - Docker / docker-compose
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment-tier
+    attributes:
+      label: Deployment tier
+      options:
+        - "Tier 1 — single container"
+        - "Tier 2 — team (docker compose, Postgres + Redis)"
+        - "Tier 3 — enterprise (Helm, OPA sidecar, OTel)"
+        - Local development / source build
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: REVOC version
+      description: Output of `revoc-proxy version`, the image tag, or the chart `appVersion`.
+      placeholder: v1.0.0 / ghcr.io/revoc-ai/revoc:1.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, request payloads (with PII redacted), and config needed to reproduce.
+      placeholder: |
+        1. Configure `revoc.toml` with ...
+        2. Send `POST /v1/chat/completions` with body ...
+        3. Observe ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: trace
+    attributes:
+      label: Trace ID / dashboard link / relevant logs
+      description: Paste the `X-Revoc-Trace-ID` header value, the `X-Revoc-Dashboard` URL, or relevant `revoc-proxy`/`admin-api` log output. Strip any secrets first.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust/Python/Node versions, how REVOC was deployed (docker run / compose / Helm), and relevant config excerpts (`revoc.toml`, `values.yaml`).
+      render: yaml
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this hasn't been reported.
+          required: true
+        - label: I have removed all PII, secrets, and API keys from this report.
+          required: true
+        - label: I can reproduce this consistently (or noted that it's intermittent above).
+          required: false

@@ -1,0 +1,32 @@
+[package]
+name        = "revoc-core"
+version     = "0.1.0"
+edition     = "2021"
+description = "Core types, traits and errors for REVOC AI Governance Gateway"
+license     = "Apache-2.0"
+repository  = "https://github.com/revoc-ai/revoc"
+keywords    = ["ai", "governance", "llm", "proxy", "security"]
+
+# revoc-core has NO internal workspace dependencies.
+# All other crates depend on this one.
+
+[dependencies]
+thiserror   = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+uuid        = { workspace = true }
+chrono      = { workspace = true }
+async-trait = { workspace = true }
+bytes       = { workspace = true }
+futures     = { workspace = true }
+once_cell   = { workspace = true }
+tracing     = { workspace = true }
+smallvec    = { workspace = true }
+zeroize     = { workspace = true }
+# Required by RevocError::HttpClient(#[from] reqwest::Error) — SPEC.md §7.1
+reqwest     = { workspace = true }
+
+[dev-dependencies]
+tokio          = { workspace = true }
+tokio-test     = { workspace = true }
+assert_matches = { workspace = true }

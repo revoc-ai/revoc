@@ -1,0 +1,73 @@
+# REVOC Policy Manifest — GDPR Baseline
+# ---------------------------------------------------------------------------
+# For EU/EEA data subjects' personal data under GDPR.
+# Activates the gdpr profile — data minimisation (Art. 5), privacy by design
+# (Art. 25), and data transfer controls (Art. 46).
+#
+# Apply via:
+#   revoc-gateway policy apply --file gdpr-baseline.yaml --env production
+#
+# Note: the top-level key (gdpr_baseline) is required so that OPA can load
+# all example files from the same directory without key conflicts.
+# ---------------------------------------------------------------------------
+
+gdpr_baseline:
+  apiVersion: revoc.io/v1
+  kind: PolicyManifest
+  metadata:
+    name: gdpr-baseline
+    version: "1.0.0"
+    description: "GDPR baseline — data minimisation, masking, and transfer auditing"
+    environment: production
+    org_id: "${ORG_ID}"
+    contact: "dpo@${ORG_DOMAIN}"
+
+  spec:
+    profile: gdpr
+
+    enforcement:
+      mode: enforce
+      fail_open: false
+
+    governance:
+      max_depth: 10
+
+    detection:
+      normalize_before_scan: true
+      regex_enabled: true
+      onnx_enabled: true
+      decode_base64_args: true
+      decode_url_encoded_args: true
+
+    model_restrictions:
+      allowed_models:
+        - "gpt-4o"
+        - "gpt-4o-mini"
+        - "claude-3-5-sonnet"
+        - "mistral-large-latest"
+
+    mcp_tool_overrides:
+      delete_s3_object:
+        action: audit
+
+    quotas:
+      default:
+        tokens_per_request: 100000
+        tokens_per_minute: 500000
+
+    upstream:
+      provider: openai
+
+    audit:
+      enabled: true
+      retention_days: 730
+      include_findings: true
+      include_model: true
+
+    webhooks:
+      enabled: true
+      events:
+        - block
+        - audit
+      min_severity: medium
+      cooldown_minutes: 15
