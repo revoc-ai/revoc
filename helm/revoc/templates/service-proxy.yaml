@@ -29,7 +29,7 @@ kind: Service
 metadata:
   name: {{ include "revoc.proxy.fullname" . }}-internal
   labels:
-    {{- include "revoc.proxy.labels" . | nindent 4 }}
+    {{- include "revoc.labels" . | nindent 4 }}
     app.kubernetes.io/component: proxy-internal
 spec:
   type: ClusterIP

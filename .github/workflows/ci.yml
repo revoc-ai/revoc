@@ -160,14 +160,13 @@ jobs:
       - name: Committed dist matches build output
         run: git diff --exit-code crates/revoc-dashboard/ui/dist/
 
-  # ── Helm — lint, template, kubectl dry-run ────────────────────────────────────
+  # ── Helm — lint, template, schema validation ────────────────────────────────────
   check-helm:
-    name: Helm / lint + template + dry-run
+    name: Helm / lint + template + validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - uses: azure/setup-kubectl@v4
       - name: Fetch chart dependencies
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -176,8 +175,10 @@ jobs:
         run: helm lint helm/revoc/
       - name: Template
         run: helm template revoc helm/revoc/ > /tmp/revoc-manifest.yaml
-      - name: Kubectl dry-run
-        run: kubectl apply --dry-run=client -f /tmp/revoc-manifest.yaml
+      # Offline schema validation — `kubectl --dry-run=client` still needs a cluster.
+      - name: Validate manifests (kubeconform)
+        run: |
+          docker run --rm -v /tmp:/work ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -ignore-missing-schemas /work/revoc-manifest.yaml
 
   # ── Security — audit, deny, pip-audit, trivy ─────────────────────────────────
   security:
@@ -201,7 +202,7 @@ jobs:
       - name: cargo deny
         run: |
           cargo install cargo-deny --locked
-          cargo deny --workspace --all-features check --config deny.toml
+          cargo deny --workspace --all-features check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
