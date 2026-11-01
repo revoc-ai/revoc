@@ -165,12 +165,16 @@ async def test_audit_event_written_after_stream(proxy_client, dashboard_client):
             async for _ in resp.aiter_lines():
                 pass
 
+    # The request-side event is written when the stream starts and the
+    # response-side one just after it ends; the trace shows the latest, so
+    # poll until the response side has landed.
     detail = None
     for _ in range(20):
         d = await dashboard_client.get(f"/api/requests/{trace_id}")
         if d.status_code == 200:
             detail = d.json()
-            break
+            if detail["request_type"] == "LlmResponse":
+                break
         await asyncio.sleep(0.5)
     assert detail is not None, "stream audit event was not written"
     assert detail["request_type"] == "LlmResponse"
