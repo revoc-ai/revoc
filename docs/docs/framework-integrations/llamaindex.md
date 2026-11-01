@@ -92,7 +92,7 @@ Settings.llm = OpenAI(
     api_key="sk-your-key-here",
 )
 
-# REVOC uses sliding window scanning on streaming responses
+# REVOC governs streaming responses as they stream
 # PII found in mid-stream is redacted before reaching your application
 response = Settings.llm.stream_complete("Tell me a story about a user named John Smith.")
 for chunk in response:

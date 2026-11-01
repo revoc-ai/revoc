@@ -33,10 +33,17 @@ path = "fuzz_targets/fuzz_normalization.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "fuzz_sse_parser"
+path = "fuzz_targets/fuzz_sse_parser.rs"
+test = false
+doc = false
+
 [dependencies]
 libfuzzer-sys = "0.4"
 revoc-core = { path = "../crates/revoc-core" }
 revoc-detector = { path = "../crates/revoc-detector" }
+revoc-pipeline = { path = "../crates/revoc-pipeline" }
 revoc-redaction = { path = "../crates/revoc-redaction" }
 revoc-telemetry = { path = "../crates/revoc-telemetry" }
 tokio = { version = "1.40", features = ["full"] }

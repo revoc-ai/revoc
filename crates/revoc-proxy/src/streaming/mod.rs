@@ -1,5 +1,4 @@
-//! Streaming response governance utilities.
+//! Streaming response governance (SPEC.md §12).
 
-pub mod sse;
+pub mod governor;
 pub mod tool_accumulator;
-pub mod window;

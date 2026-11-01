@@ -240,7 +240,7 @@ revoc/
 │       ├── handlers/ (mod.rs, llm.rs, mcp.rs, embeddings.rs, emergency.rs, health.rs)
 │       ├── middleware/ (mod.rs, auth.rs, request_id.rs, rate_limit.rs, metrics_recorder.rs, security.rs)
 │       ├── upstream/ (mod.rs, client.rs, router.rs, retry.rs, streaming.rs, error.rs)
-│       ├── streaming/ (mod.rs, window.rs, tool_accumulator.rs, sse.rs)
+│       ├── streaming/ (mod.rs, governor.rs, tool_accumulator.rs)
 │       └── tests/ (mod.rs, llm_handler_tests.rs, mcp_handler_tests.rs, streaming_tests.rs, kill_switch_tests.rs, depth_tests.rs)
 ├── policies/
 │   ├── default/ (data.json, main.rego, llm_governance.rego, mcp_governance.rego,
@@ -1110,7 +1110,7 @@ Step 11: Route on effective_action:
 Step 12: Validate upstream URL (SSRF protection — validate against allowlist)
 Step 13: Build upstream request + format translation (OpenAI→Anthropic if needed)
 Step 14: Set X-Revoc-Depth: {depth+1} on upstream request
-Step 15: If stream=true: sliding window scanner + tool_call accumulator
+Step 15: If stream=true: stream governor (§12) — per-choice hold-back, in-stream redaction, tool calls held until governed
          If stream=false: buffer full response, output governance
 Step 16: Extract TokenUsage. Compute estimated_cost_usd.
 Step 17: Update session state in Redis/memory.
@@ -1152,32 +1152,68 @@ Step 12: Write audit, publish SSE, record metrics, close span
 
 ## SECTION 12 — STREAMING ARCHITECTURE
 
-### Sliding Window Scanner (streaming/window.rs)
+### SSE parser (revoc-pipeline/src/sse.rs)
 
-```rust
-pub struct SlidingWindowScanner {
-    window: std::collections::VecDeque<u8>,
-    window_size: usize,              // default: 256 bytes from config
-    detector: Arc<DetectionEngine>,
-}
-// For each SSE chunk:
-// 1. Append delta text to window
-// 2. Trim window to window_size bytes
-// 3. Scan window content
-// 4. Forward safe prefix (window.len() - max_pattern_length)
-// 5. Return ChunkResult { bytes_to_forward, block_reason, redacted_findings }
+`SseParser` is incremental: it keeps the unterminated tail between chunks, so an
+event split across TCP reads, or several events in one read, are each seen once
+and whole. Accepts `\n`, `\r\n` and `\r` line endings, multi-line `data:`,
+comments and an unterminated final event. A single event larger than
+`server.max_response_body_bytes` is an error. Fuzzed by `fuzz_sse_parser`
+(chunked parse == whole-body parse).
+
+### Stream governor (streaming/governor.rs)
+
+Sits between the parser and the client and decides, per event, what may be sent.
+
+```text
+Text   — OpenAI choices[i].delta.content; Anthropic text_delta / thinking_delta
+         One channel per choice / content block. Text is NFKC-normalised on
+         arrival (D8) and appended to the channel's pending buffer.
+         The last stream.hold_back_chars (default 128) characters are held.
+         When more than that is pending, scan (released tail + pending):
+           detection → policy (RequestType::LlmResponse)
+           Block            → stop the stream (below)
+           Redact / High    → rewrite the spans in pending (strategy_for);
+                              a span crossing the release point moves it forward
+           findings in encoded text that need redaction → stop (cannot rewrite)
+         Release pending minus the tail, as a copy of the last text event with
+         the text replaced. At finish_reason / content_block_stop /
+         message_delta / [DONE] / EOF, scan and release everything.
+         Any pattern up to hold_back_chars long is complete before any of its
+         characters is released.
+Tools  — OpenAI delta.tool_calls; Anthropic tool_use blocks + input_json_delta
+         Every tool event is held. Before the choice's finish_reason (or
+         message_delta) is forwarded, the assembled calls are governed as
+         RequestType::McpToolCall; anything but allow stops the stream.
+         Arguments that are not valid JSON are governed as a raw string.
+Other  — role-only deltas, usage chunks, message_start, ping: forwarded.
+         Unrecognised JSON events are scanned whole and forwarded only if
+         nothing needs blocking or redaction. Non-JSON data stops the stream
+         when fail-closed.
+Stop   — OpenAI: synthetic finish_reason=content_filter chunk, then [DONE].
+         Anthropic: `event: error` with type revoc_governance_block.
+         Nothing held is released.
+Shadow — nothing is blocked or rewritten; findings and the action that would
+         have been taken are recorded.
+Errors — detection or policy failure stops the stream unless fail_open.
+         Upstream read error: held text is released after a final scan and no
+         [DONE] is sent, so the client sees the truncation.
+         Total bytes over server.max_response_body_bytes: stream stopped.
 ```
 
-### Tool Call Accumulator (streaming/tool_accumulator.rs)
+`stream.buffer_output = true` reads the whole body (within
+`max_response_body_bytes`), runs the same governor with unlimited hold-back,
+and only then responds: a block becomes HTTP 403 `RevocErrorResponse`, a
+redaction a rewritten SSE body.
 
-```rust
-pub struct ToolCallAccumulator { calls: HashMap<u32, PartialToolCall> }
-// Accumulates function.name + function.arguments per index across SSE chunks
-// is_finish_tool_calls(chunk): returns true when finish_reason == "tool_calls"
-// get_completed_calls(): parse accumulated JSON → Vec<McpToolCall>
-// WHEN finish_reason=tool_calls: run full MCP governance on accumulated calls
-//   If blocked: inject synthetic_content_filter_chunk, do NOT forward to MCP server
-```
+### Audit
+
+A streamed request writes two audit events with the same `trace_id`: the
+request side when the stream starts (as for non-streamed requests) and the
+response side (`request_type = LlmResponse`) when it ends, carrying the
+findings, matched rules, `decision` / `effective_action` (`audit` for shadow),
+token usage from the stream when the provider sends it, and
+`stream_truncated` in `violated_rules` when the stream ended early.
 
 ---
 
@@ -1257,8 +1293,7 @@ decode_url_encoded_args = true
 
 [stream]
 buffer_output = false           # true = full buffer (HIPAA/PCI compliance mode)
-sliding_window_size = 256
-tool_call_accumulate = true
+hold_back_chars = 128           # chars held per choice until scanned
 
 [mcp]
 analyze_tool_manifests = true   # MUST default true — schema poisoning defense

@@ -484,10 +484,10 @@ grep -q "internal/emergency" crates/revoc-proxy/src/handlers/emergency.rs \
   && echo "✅ /internal/emergency endpoint exists" \
   || echo "❌ /internal/emergency endpoint missing"
 
-# Streaming: sliding window scanner
-grep -q "SlidingWindowScanner\|sliding_window\|window_size" \
-  crates/revoc-proxy/src/streaming/window.rs \
-  && echo "✅ Sliding window scanner present" || echo "❌ Sliding window missing"
+# Streaming: stream governor with hold-back
+grep -q "StreamGovernor" crates/revoc-proxy/src/streaming/governor.rs \
+  && grep -q "hold_back" crates/revoc-proxy/src/streaming/governor.rs \
+  && echo "✅ Stream governor present" || echo "❌ Stream governor missing"
 
 # Streaming: tool call accumulator
 grep -q "ToolCallAccumulator\|finish_reason.*tool_calls\|accumulated" \

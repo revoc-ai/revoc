@@ -222,6 +222,8 @@ impl AuditStore for SqliteAuditStore {
         Ok((rows, total.unsigned_abs()))
     }
 
+    /// A streamed request has a request-side and a response-side event; the
+    /// latest one (ids are UUID v7, so time-ordered) is the trace's outcome.
     async fn get_event_by_trace(&self, trace_id: &str) -> Result<Option<AuditEvent>, RevocError> {
         let sql = "SELECT id, org_id, request_id, timestamp, caller_id, caller_team, \
                    environment, decision, effective_action, enforcement_mode, \
@@ -229,7 +231,7 @@ impl AuditStore for SqliteAuditStore {
                    request_type, governance_depth, prompt_tokens, completion_tokens, \
                    estimated_cost_usd, duration_ms, detection_ms, policy_ms, \
                    was_normalized, manifest_warnings, trace_id, policy_engine, created_at \
-                   FROM audit_events WHERE trace_id = ? LIMIT 1";
+                   FROM audit_events WHERE trace_id = ? ORDER BY id DESC LIMIT 1";
         sqlx::query_as::<_, AuditEvent>(sql)
             .bind(trace_id)
             .fetch_optional(&self.pool)

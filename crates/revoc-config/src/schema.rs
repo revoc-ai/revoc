@@ -703,11 +703,8 @@ fn default_true() -> bool {
 
 // ── [stream] ──────────────────────────────────────────────────────────────────
 
-fn default_sliding_window_size() -> usize {
-    256
-}
-fn default_tool_call_accumulate() -> bool {
-    true
+fn default_hold_back_chars() -> usize {
+    128
 }
 
 /// Streaming SSE response governance settings.
@@ -719,22 +716,19 @@ pub struct StreamConfig {
     #[serde(default)]
     pub buffer_output: bool,
 
-    /// Sliding window size in bytes for the streaming scanner (default `256`).
-    #[serde(default = "default_sliding_window_size")]
-    pub sliding_window_size: usize,
-
-    /// Accumulate tool call arguments across SSE chunks and run governance on
-    /// `finish_reason = "tool_calls"` (default `true`).
-    #[serde(default = "default_tool_call_accumulate")]
-    pub tool_call_accumulate: bool,
+    /// Characters of streamed text held back per choice before release
+    /// (default `128`). Any pattern up to this length is complete before
+    /// any of it reaches the client, so it can be blocked or redacted.
+    /// Larger values add latency to the first visible tokens.
+    #[serde(default = "default_hold_back_chars")]
+    pub hold_back_chars: usize,
 }
 
 impl Default for StreamConfig {
     fn default() -> Self {
         Self {
             buffer_output: false,
-            sliding_window_size: default_sliding_window_size(),
-            tool_call_accumulate: default_tool_call_accumulate(),
+            hold_back_chars: default_hold_back_chars(),
         }
     }
 }

@@ -103,7 +103,7 @@ export OPENAI_BASE_URL=http://localhost:8080
 | Tool manifest analysis | ✅ | Scans MCP `tools/list` for dangerous parameter names and suspicious descriptions |
 | Bidirectional MCP governance | ✅ | Tool arguments and tool results inspected (JSON-RPC over HTTP POST) |
 | Shadow mode | ✅ | Observe without blocking |
-| Streaming governance | ⚠️ | Sliding-window scanner and tool-call accumulator; experimental — use `stream.buffer_output = true` for strict inspection |
+| Streaming governance | ✅ | Per-choice hold-back scanning with in-stream redaction (OpenAI and Anthropic formats); tool calls held until governed; `stream.buffer_output = true` inspects the whole response before sending |
 | Compliance profiles (HIPAA / PCI-DSS / GDPR) | ⚠️ | Example policy bundles only. REVOC is not certified for, and does not by itself make you compliant with, any framework |
 | Postgres audit store / Redis shared state | ❌ | Audit events are written to SQLite today |
 | Calls home / telemetry | ❌ | REVOC makes zero outbound connections to revoc.io |
@@ -285,10 +285,8 @@ and is not yet recommended as the only control in front of production systems.
 
 Known gaps being worked on before 1.0:
 
-- Streaming governance scans assembled SSE frames with a sliding window; a
-  rebuilt per-choice parser with hold-back and in-stream redaction is planned.
-- The policy decision cache key does not yet include tool arguments or session
-  state; set `policy.decision_cache_ttl_secs = 0` for strict evaluation.
+- Streamed text is held back by `stream.hold_back_chars` (128); a sensitive
+  pattern longer than that can have its start released before it is matched.
 - Kill-switch state is per instance; there is no persisted, reconciled state.
 - All API keys map to a single org; there is no tenant-scoped key registry yet.
 - Audit storage is SQLite only on the proxy; Postgres is used by the admin API.

@@ -20,13 +20,16 @@ use crate::{
     app::AppState,
     depth::check_depth,
     middleware::request_id::{GovernanceDepth, RequestId},
+    streaming::governor::StreamContext,
     upstream::{
-        error::should_forward_verbatim, retry::send_with_retries, streaming::proxy_sse_stream,
+        error::should_forward_verbatim,
+        retry::send_with_retries,
+        streaming::{proxy_sse_stream, StreamOutcome},
     },
 };
 
-/// Maximum upstream retry attempts on transient failures (transport-level
-/// connect/timeout errors and 429/502/503/504 status codes) — SPEC.md §23
+/// Maximum upstream retry attempts on failures where the request provably
+/// was not processed (connect errors and HTTP 429) — SPEC.md §23
 /// wires the retry-policy infrastructure (`upstream::retry`) into Step 15.
 const MAX_UPSTREAM_RETRIES: u32 = 2;
 
@@ -513,18 +516,138 @@ async fn run_llm_handler(
         return resp;
     }
 
+    // Step 17: update and persist session state
+    let updated_session = update_session_state(
+        existing_session,
+        &session_id,
+        &caller,
+        &findings,
+        request_type == RequestType::McpToolCall,
+    );
+    {
+        let store = state.session_store.clone();
+        let sid = session_id.clone();
+        let sess = updated_session.clone();
+        let ttl = state.config.session.ttl_secs;
+        if state.config.session.enabled {
+            tokio::spawn(async move {
+                if let Err(e) = store.set(&sid, sess, ttl).await {
+                    warn!(error = %e, "Failed to persist session state");
+                }
+            });
+        }
+    }
+
+    // Steps 19–20 inputs, shared by the streaming and non-streaming paths.
+    let decision_str = action_to_str(&effective.effective_action);
+    let rules_str = if decision.applicable_rules.is_empty() {
+        None
+    } else {
+        Some(decision.applicable_rules.join(","))
+    };
+
+    let finding_types: Vec<String> = findings
+        .iter()
+        .map(|f| format!("{:?}", f.finding_type))
+        .collect();
+    let request_audit = |token_usage: Option<&TokenUsage>| {
+        let now = chrono::Utc::now();
+        revoc_dashboard::AuditEvent {
+            id: uuid::Uuid::now_v7().to_string(),
+            org_id: Some(caller.org_id.clone()),
+            request_id: request_id.clone(),
+            timestamp: now.to_rfc3339(),
+            caller_id: Some(caller.caller_id.clone()),
+            caller_team: caller.team.clone(),
+            environment: Some(state.config.server.environment.clone()),
+            decision: decision_str.to_owned(),
+            effective_action: action_to_str(&effective.effective_action).to_owned(),
+            enforcement_mode: if enforcement_mode == EnforcementMode::Shadow {
+                "shadow".to_owned()
+            } else {
+                "enforce".to_owned()
+            },
+            violated_rules: rules_str.clone(),
+            finding_types: if finding_types.is_empty() {
+                None
+            } else {
+                Some(finding_types.join(","))
+            },
+            model: Some(model.clone()),
+            provider: Some(provider.name.clone()),
+            tool_name: None,
+            request_type: Some(format!("{request_type:?}")),
+            governance_depth: i64::from(governance_depth),
+            prompt_tokens: token_usage
+                .as_ref()
+                .map(|t| i64::try_from(t.prompt_tokens).unwrap_or(i64::MAX)),
+            completion_tokens: token_usage
+                .as_ref()
+                .map(|t| i64::try_from(t.completion_tokens).unwrap_or(i64::MAX)),
+            estimated_cost_usd: token_usage.as_ref().and_then(|t| t.estimated_cost_usd),
+            duration_ms: Some(total_ms),
+            detection_ms: Some(detection_ms),
+            policy_ms: Some(policy_ms),
+            was_normalized,
+            manifest_warnings: 0,
+            trace_id: Some(trace_id.clone()),
+            policy_engine: Some(format!("{:?}", decision.policy_engine)),
+            created_at: now.to_rfc3339(),
+        }
+    };
+
     // ── Step 15 (streaming) ───────────────────────────────────────────────────
     if is_stream {
-        let mut resp = proxy_sse_stream(upstream_resp, &state, &caller, &trace_id).await;
-        set_revoc_headers(
-            resp.headers_mut(),
-            &trace_id,
-            action_to_str(&effective.effective_action),
-            &format!("{dash_base}/traces/{trace_id}"),
-            &timing,
-            None,
-        );
-        return resp;
+        // Request side is audited now; the response side is audited by the
+        // stream governor when the stream ends.
+        state.spawn_audit_write(request_audit(None));
+        let ctx = StreamContext {
+            trace_id: trace_id.clone(),
+            request_id: request_id.clone(),
+            model: model.clone(),
+            provider: provider.name.clone(),
+            caller: caller.clone(),
+            shadow: enforcement_mode == EnforcementMode::Shadow,
+        };
+        return match proxy_sse_stream(upstream_resp, &state, ctx).await {
+            StreamOutcome::Response(mut resp) => {
+                set_revoc_headers(
+                    resp.headers_mut(),
+                    &trace_id,
+                    decision_str,
+                    &format!("{dash_base}/traces/{trace_id}"),
+                    &timing,
+                    rules_str.as_deref(),
+                );
+                resp
+            }
+            StreamOutcome::Blocked { reason, rules } => {
+                let body = RevocErrorResponse::governance_block(
+                    &trace_id,
+                    &reason,
+                    rules.clone(),
+                    &dash_base,
+                );
+                let mut resp = make_error_response(
+                    403,
+                    body,
+                    &trace_id,
+                    &request_id,
+                    &dash_base,
+                    overall_start,
+                );
+                if let Ok(v) = rules.join(",").parse::<HeaderValue>() {
+                    if !rules.is_empty() {
+                        resp.headers_mut().insert("X-Revoc-Rules", v);
+                    }
+                }
+                resp
+            }
+            StreamOutcome::UpstreamUnreadable => {
+                let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                make_error_response(502, body, &trace_id, &request_id, &dash_base, overall_start)
+            }
+        };
     }
 
     // ── Steps 16–17: Non-streaming response ───────────────────────────────────
@@ -553,36 +676,7 @@ async fn run_llm_handler(
     // Step 16: extract token usage + estimate cost from the upstream JSON body
     let token_usage = extract_token_usage(&resp_body, &model);
 
-    // Step 17: update and persist session state
-    let updated_session = update_session_state(
-        existing_session,
-        &session_id,
-        &caller,
-        &findings,
-        request_type == RequestType::McpToolCall,
-    );
-    {
-        let store = state.session_store.clone();
-        let sid = session_id.clone();
-        let sess = updated_session.clone();
-        let ttl = state.config.session.ttl_secs;
-        if state.config.session.enabled {
-            tokio::spawn(async move {
-                if let Err(e) = store.set(&sid, sess, ttl).await {
-                    warn!(error = %e, "Failed to persist session state");
-                }
-            });
-        }
-    }
-
     // ── Step 19: Set ALL response headers ─────────────────────────────────────
-    let decision_str = action_to_str(&effective.effective_action);
-    let rules_str = if decision.applicable_rules.is_empty() {
-        None
-    } else {
-        Some(decision.applicable_rules.join(","))
-    };
-
     let mut resp = Response::builder()
         .status(resp_status)
         .header("Content-Type", "application/json")
@@ -599,56 +693,10 @@ async fn run_llm_handler(
     );
 
     // ── Step 20: Write AuditEvent (async, batched per Rule 25) ────────────────
-    let finding_types: Vec<String> = findings
-        .iter()
-        .map(|f| format!("{:?}", f.finding_type))
-        .collect();
-    let now = chrono::Utc::now();
-    let audit_event = revoc_dashboard::AuditEvent {
-        id: uuid::Uuid::now_v7().to_string(),
-        org_id: Some(caller.org_id.clone()),
-        request_id: request_id.clone(),
-        timestamp: now.to_rfc3339(),
-        caller_id: Some(caller.caller_id.clone()),
-        caller_team: caller.team.clone(),
-        environment: Some(state.config.server.environment.clone()),
-        decision: decision_str.to_owned(),
-        effective_action: action_to_str(&effective.effective_action).to_owned(),
-        enforcement_mode: if enforcement_mode == EnforcementMode::Shadow {
-            "shadow".to_owned()
-        } else {
-            "enforce".to_owned()
-        },
-        violated_rules: rules_str.clone(),
-        finding_types: if finding_types.is_empty() {
-            None
-        } else {
-            Some(finding_types.join(","))
-        },
-        model: Some(model.clone()),
-        provider: Some(provider.name.clone()),
-        tool_name: None,
-        request_type: Some(format!("{request_type:?}")),
-        governance_depth: i64::from(governance_depth),
-        prompt_tokens: token_usage
-            .as_ref()
-            .map(|t| i64::try_from(t.prompt_tokens).unwrap_or(i64::MAX)),
-        completion_tokens: token_usage
-            .as_ref()
-            .map(|t| i64::try_from(t.completion_tokens).unwrap_or(i64::MAX)),
-        estimated_cost_usd: token_usage.as_ref().and_then(|t| t.estimated_cost_usd),
-        duration_ms: Some(total_ms),
-        detection_ms: Some(detection_ms),
-        policy_ms: Some(policy_ms),
-        was_normalized,
-        manifest_warnings: 0,
-        trace_id: Some(trace_id.clone()),
-        policy_engine: Some(format!("{:?}", decision.policy_engine)),
-        created_at: now.to_rfc3339(),
-    };
-    state.spawn_audit_write(audit_event);
+    state.spawn_audit_write(request_audit(token_usage.as_ref()));
 
     // ── Step 21: Publish GovernanceEvent to dashboard SSE bus ─────────────────
+    let now = chrono::Utc::now();
     let pii_types: Vec<String> = findings
         .iter()
         .filter_map(|f| f.pii_entity.as_ref().map(PiiEntityType::to_string))
@@ -711,23 +759,27 @@ fn extract_token_usage(resp_body: &[u8], model: &str) -> Option<TokenUsage> {
         .get("completion_tokens")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
-    let total_tokens = usage
-        .get("total_tokens")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(prompt_tokens + completion_tokens);
+    Some(token_usage_for(prompt_tokens, completion_tokens, model))
+}
 
+/// Build a [`TokenUsage`] with an estimated cost from token counts.
+#[allow(clippy::cast_precision_loss)]
+pub(crate) fn token_usage_for(
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    model: &str,
+) -> TokenUsage {
     let (prompt_rate, completion_rate) = model_pricing_per_1k(model);
     let estimated_cost_usd = Some(
         (prompt_tokens as f64 / 1000.0) * prompt_rate
             + (completion_tokens as f64 / 1000.0) * completion_rate,
     );
-
-    Some(TokenUsage {
+    TokenUsage {
         prompt_tokens,
         completion_tokens,
-        total_tokens,
+        total_tokens: prompt_tokens + completion_tokens,
         estimated_cost_usd,
-    })
+    }
 }
 
 /// Static USD-per-1K-token pricing `(prompt, completion)` for well-known

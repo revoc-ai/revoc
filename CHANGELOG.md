@@ -8,6 +8,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Streaming (S4/S5)
+- **Rebuilt streaming governance.**
+  - An incremental SSE parser reassembles events split across reads.
+  - A per-choice / per-block governor scans the assistant text, not raw SSE bytes. It holds back the last `stream.hold_back_chars` (default 128) characters until they are scanned.
+  - PII is redacted in-stream; blocking findings stop the stream.
+  - OpenAI and Anthropic stream formats are both supported.
+- **Tool-call deltas are held** until the assembled calls pass governance. Previously argument fragments reached the client before the check. Invalid-JSON arguments are governed as raw text instead of `{}`.
+- **`stream.buffer_output = true` now inspects the response.** Previously it buffered without governing. A block becomes HTTP 403.
+- **Shadow mode is honoured for streams:** findings are recorded, the stream is unchanged.
+- **Streams are audited on both sides:** the request when it starts, the response when it ends. The response event records findings, rules, token usage from the stream, and truncation.
+- An upstream read error no longer ends with `[DONE]`, so clients can tell the response was truncated.
+- New fuzz target `fuzz_sse_parser`.
+
+### Breaking (config)
+- `stream.sliding_window_size` and `stream.tool_call_accumulate` are removed. Use `stream.hold_back_chars`; tool calls are always held until governed.
+- A PII finding in a streamed response is now redacted rather than ending the stream.
+
 ### Security
 - The native policy engine no longer caches decisions. The OPA sidecar cache
   key now covers the whole policy input (tool arguments and results, messages,
