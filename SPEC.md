@@ -1516,6 +1516,14 @@ database; on Postgres this is shared, so `REVOC_KILL_SWITCH_KEY` is required.
 Sessions use Redis (`revoc:session:<id>`, TTL `session.ttl_secs`) when
 `REDIS_URL` is set, otherwise process memory.
 
+Audit writes go through one writer task: handlers `try_send` onto a bounded
+queue (100,000 events; a full queue drops and counts the event, never
+blocks), and the writer stores whatever is queued, up to
+`audit_write_batch_size`, in one transaction, retrying a failed batch 3 times
+from `audit_write_interval_ms`. `/ready` reports `audit.{queued, written,
+dropped, batches}`; any drop makes the instance `degraded`. SQLite runs in WAL
+mode with a 5 s busy timeout.
+
 ---
 
 ## SECTION 16 — RESPONSE HEADERS

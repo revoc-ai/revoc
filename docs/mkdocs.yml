@@ -83,6 +83,7 @@ nav:
       - concepts/session-tracking.md
   - Default Rules:
       - default-rules/overview.md
+      - default-rules/catalog.md
       - default-rules/pii-rules.md
       - default-rules/secret-rules.md
       - default-rules/security-rules.md

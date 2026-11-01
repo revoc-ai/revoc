@@ -52,7 +52,11 @@ pub async fn ready_handler(
     if state.kill_switch.store_lockout() {
         reasons.push("kill_switch_store_unavailable".to_owned());
     }
-    let degraded = !state.kill_switch_service.healthy();
+    let audit = state.audit_writer.status_json();
+    // Lost audit events make the instance degraded, not unready: it still
+    // governs, but its record is incomplete.
+    let audit_dropped = audit["dropped"].as_u64().unwrap_or(0) > 0;
+    let degraded = !state.kill_switch_service.healthy() || audit_dropped;
 
     if reasons.is_empty() {
         (
@@ -60,12 +64,18 @@ pub async fn ready_handler(
             Json(json!({
                 "status": if degraded { "degraded" } else { "ready" },
                 "kill_switch": kill_switch,
+                "audit": audit,
             })),
         )
     } else {
         (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"status": "not_ready", "reasons": reasons, "kill_switch": kill_switch})),
+            Json(json!({
+                "status": "not_ready",
+                "reasons": reasons,
+                "kill_switch": kill_switch,
+                "audit": audit,
+            })),
         )
     }
 }

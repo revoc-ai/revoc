@@ -44,8 +44,7 @@ use crate::{
         request_id::request_id_middleware,
         security::security_middleware,
     },
-    storage::{PostgresAuditStore, RedisSessionStore},
-    upstream::retry::with_retry,
+    storage::{AuditWriter, PostgresAuditStore, RedisSessionStore},
     upstream::{client::UpstreamClient, router::UpstreamRouter},
 };
 
@@ -144,8 +143,13 @@ pub struct SqliteAuditStore {
 impl SqliteAuditStore {
     /// Open or create a `SQLite` database at `path`.
     pub async fn open(path: &str) -> Result<Self, anyhow::Error> {
-        let url = format!("sqlite:{path}?mode=rwc");
-        let pool = sqlx::SqlitePool::connect(&url).await?;
+        use std::str::FromStr as _;
+        let options = sqlx::sqlite::SqliteConnectOptions::from_str(&format!("sqlite:{path}"))?
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+            .busy_timeout(Duration::from_secs(5));
+        let pool = sqlx::SqlitePool::connect_with(options).await?;
         // Ensure the audit table exists
         sqlx::query(include_str!("../sql/schema.sql"))
             .execute(&pool)
@@ -160,51 +164,70 @@ impl SqliteAuditStore {
     }
 }
 
+/// The bound `INSERT` for one event, shared by single and batch writes.
+fn sqlite_insert(
+    event: &AuditEvent,
+) -> sqlx::query::Query<'_, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'_>> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO audit_events
+         (id, org_id, request_id, timestamp, caller_id, caller_team, environment,
+          decision, effective_action, enforcement_mode, violated_rules, finding_types,
+          model, provider, tool_name, request_type, governance_depth, prompt_tokens,
+          completion_tokens, estimated_cost_usd, duration_ms, detection_ms, policy_ms,
+          was_normalized, manifest_warnings, trace_id, policy_engine, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    )
+    .bind(&event.id)
+    .bind(&event.org_id)
+    .bind(&event.request_id)
+    .bind(&event.timestamp)
+    .bind(&event.caller_id)
+    .bind(&event.caller_team)
+    .bind(&event.environment)
+    .bind(&event.decision)
+    .bind(&event.effective_action)
+    .bind(&event.enforcement_mode)
+    .bind(&event.violated_rules)
+    .bind(&event.finding_types)
+    .bind(&event.model)
+    .bind(&event.provider)
+    .bind(&event.tool_name)
+    .bind(&event.request_type)
+    .bind(event.governance_depth)
+    .bind(event.prompt_tokens)
+    .bind(event.completion_tokens)
+    .bind(event.estimated_cost_usd)
+    .bind(event.duration_ms)
+    .bind(event.detection_ms)
+    .bind(event.policy_ms)
+    .bind(event.was_normalized)
+    .bind(event.manifest_warnings)
+    .bind(&event.trace_id)
+    .bind(&event.policy_engine)
+    .bind(&event.created_at)
+}
+
 #[async_trait]
-#[allow(clippy::too_many_lines)] // insert_event binds every audit column
+#[allow(clippy::too_many_lines)] // analytics runs five aggregate queries
 impl AuditStore for SqliteAuditStore {
     async fn insert_event(&self, event: AuditEvent) -> Result<(), RevocError> {
-        sqlx::query(
-            "INSERT OR REPLACE INTO audit_events
-             (id, org_id, request_id, timestamp, caller_id, caller_team, environment,
-              decision, effective_action, enforcement_mode, violated_rules, finding_types,
-              model, provider, tool_name, request_type, governance_depth, prompt_tokens,
-              completion_tokens, estimated_cost_usd, duration_ms, detection_ms, policy_ms,
-              was_normalized, manifest_warnings, trace_id, policy_engine, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        )
-        .bind(&event.id)
-        .bind(&event.org_id)
-        .bind(&event.request_id)
-        .bind(&event.timestamp)
-        .bind(&event.caller_id)
-        .bind(&event.caller_team)
-        .bind(&event.environment)
-        .bind(&event.decision)
-        .bind(&event.effective_action)
-        .bind(&event.enforcement_mode)
-        .bind(&event.violated_rules)
-        .bind(&event.finding_types)
-        .bind(&event.model)
-        .bind(&event.provider)
-        .bind(&event.tool_name)
-        .bind(&event.request_type)
-        .bind(event.governance_depth)
-        .bind(event.prompt_tokens)
-        .bind(event.completion_tokens)
-        .bind(event.estimated_cost_usd)
-        .bind(event.duration_ms)
-        .bind(event.detection_ms)
-        .bind(event.policy_ms)
-        .bind(event.was_normalized)
-        .bind(event.manifest_warnings)
-        .bind(&event.trace_id)
-        .bind(&event.policy_engine)
-        .bind(&event.created_at)
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(|e| RevocError::Database(e.to_string()))
+        sqlite_insert(&event)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| RevocError::Database(e.to_string()))
+    }
+
+    async fn insert_batch(&self, events: Vec<AuditEvent>) -> Result<(), RevocError> {
+        let db_err = |e: sqlx::Error| RevocError::Database(e.to_string());
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        for event in &events {
+            sqlite_insert(event)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_err)?;
+        }
+        tx.commit().await.map_err(db_err)
     }
 
     async fn list_events(&self, filter: EventFilter) -> Result<(Vec<AuditEvent>, u64), RevocError> {
@@ -442,9 +465,11 @@ pub struct AppState {
     pub session_store: Arc<dyn SessionStore + Send + Sync>,
     /// Per-caller rate limiter.
     pub rate_limiter: RateLimiter,
-    /// Count of in-flight async audit-event writes — lets graceful shutdown
+    /// Count of queued or in-flight audit events — lets graceful shutdown
     /// drain the queue instead of dropping writes on the floor (Rule 25/26).
     pub pending_audit_writes: Arc<std::sync::atomic::AtomicUsize>,
+    /// Batched audit writer (SPEC.md §23 Rule 25).
+    pub audit_writer: AuditWriter,
 }
 
 impl AppState {
@@ -455,30 +480,13 @@ impl AppState {
         !self.config.policy.fail_open
     }
 
-    /// Spawn an async, batched audit-event write without blocking the request
-    /// path (SPEC.md §23 Rule 25). The write is tracked via
+    /// Queue an audit event for the batched writer without blocking the
+    /// request path (SPEC.md §23 Rule 25). Queued events are counted in
     /// `pending_audit_writes` so [`crate::shutdown::graceful_shutdown`] can
-    /// wait for in-flight writes to drain before the process exits.
+    /// wait for them to drain before the process exits.
     pub fn spawn_audit_write(&self, event: AuditEvent) {
-        let store = self.audit_store.clone();
-        let pending = self.pending_audit_writes.clone();
         crate::middleware::audit_exit::mark_audited();
-        pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        tokio::spawn(async move {
-            // Retry up to 2 times (3 total attempts) with exponential backoff
-            // to survive transient SQLite lock contention without permanently
-            // losing the audit record (SPEC.md §23 Rule 25).
-            let result = with_retry(2, || {
-                let store = store.clone();
-                let event = event.clone();
-                async move { store.insert_event(event).await }
-            })
-            .await;
-            if let Err(e) = result {
-                tracing::warn!(error = %e, "Failed to write audit event after retries");
-            }
-            pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        });
+        self.audit_writer.enqueue(event);
     }
 }
 
@@ -538,6 +546,14 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
     );
 
     let pending_audit_writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let audit_cfg = &cfg.storage.audit;
+    let audit_writer = AuditWriter::spawn(
+        audit_store.clone(),
+        audit_cfg.audit_write_batch_size,
+        Duration::from_millis(audit_cfg.audit_write_interval_ms.max(1)),
+        AUDIT_QUEUE_CAPACITY,
+        pending_audit_writes.clone(),
+    );
 
     Ok(AppState {
         config: cfg,
@@ -554,8 +570,13 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
         session_store,
         rate_limiter,
         pending_audit_writes,
+        audit_writer,
     })
 }
+
+/// Audit events that may wait for the writer before new ones are dropped —
+/// about 10 s of backlog at 10k req/s.
+const AUDIT_QUEUE_CAPACITY: usize = 100_000;
 
 type AuditDb = (
     Arc<dyn AuditStore + Send + Sync>,

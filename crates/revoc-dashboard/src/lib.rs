@@ -237,6 +237,15 @@ pub trait AuditStore: Send + Sync {
     /// Insert a new audit event.
     async fn insert_event(&self, event: AuditEvent) -> Result<(), revoc_core::RevocError>;
 
+    /// Insert several events. Backends override this with one transaction;
+    /// the default inserts them one by one.
+    async fn insert_batch(&self, events: Vec<AuditEvent>) -> Result<(), revoc_core::RevocError> {
+        for event in events {
+            self.insert_event(event).await?;
+        }
+        Ok(())
+    }
+
     /// List events matching the filter.
     async fn list_events(
         &self,

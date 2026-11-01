@@ -8,6 +8,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Proof and benchmarks (S8)
+- **HTTP load test in CI.**
+  - `scripts/proof.sh` drives a release build with k6, in front of a stub upstream.
+  - Scenarios: clean chat, chat with PII, MCP `tools/call`, embeddings.
+  - It reports P50/P90/P95/P99/max per scenario and fails if P95 ≥ 10 ms or P99 ≥ 25 ms.
+  - New CI job **Proof / load + egress + PII**; the report goes to the job summary and the `proof-report` artifact.
+- **Audit completeness gate:** every request in the load test must leave an audit row, with none dropped.
+- **No-egress gate:** strace records every `connect`/`sendto`/`sendmsg` the proxy makes. Every address must be loopback.
+- **No-PII-in-logs gate:** per-run canary values must not appear in the proxy's trace-level logs, the audit database, or the bodies the upstream received. The canaries are an email, an SSN, an AWS key, the client API key and the upstream key.
+- **Generated Rule Catalog.**
+  - `revoc-proxy list-rules` prints every built-in pattern, with the rule ID and action the native policy engine actually produces for requests, responses and MCP tool results.
+  - The output is committed as `docs/default-rules/catalog.md`; a test fails if it drifts.
+- **`CLAIMS.md`** lists every claim REVOC makes, with its status (proven / tested / target / not claimed) and evidence.
+
+### Fixed (S8)
+- **Audit events were lost under load.**
+  - Every event spawned its own SQLite write. At 800 req/s about 80% of events were dropped ("pool timed out") and retries tied up the runtime.
+  - One writer task now stores queued events in batches of up to `audit_write_batch_size`, one transaction per batch, on a bounded queue.
+  - SQLite runs in WAL mode with a busy timeout.
+  - `/ready` reports `audit.{queued, written, dropped, batches}` and reports `degraded` if any event was dropped.
+- **Hand-written rule docs corrected.** They said secrets in responses are "removed" and listed per-secret rule IDs as actions. In fact every secret finding blocks, as `secret_block_v1`. The rule pages now point to the generated catalog.
+
 ### Storage (S7)
 - **Postgres audit store in the proxy.**
   - `storage.backend = "postgres"` now writes audit events to Postgres. Previously the setting was ignored and every instance wrote to a local SQLite file, even under the compose and Helm defaults.

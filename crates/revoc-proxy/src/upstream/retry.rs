@@ -35,39 +35,6 @@ pub fn parse_retry_after(header: &str) -> Option<Duration> {
     header.trim().parse::<u64>().ok().map(Duration::from_secs)
 }
 
-/// Execute `f` with up to `max_retries` retry attempts using exponential
-/// backoff. Retries only on `Err`; the final attempt's error is returned
-/// verbatim if every attempt fails.
-pub async fn with_retry<F, Fut, T, E>(max_retries: u32, mut f: F) -> Result<T, E>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, E>>,
-    E: std::fmt::Display,
-{
-    let mut attempt = 0;
-    loop {
-        if attempt > 0 {
-            let delay = backoff_delay(attempt - 1);
-            warn!(
-                attempt,
-                delay_ms = delay.as_millis(),
-                "Retrying upstream request"
-            );
-            tokio::time::sleep(delay).await;
-        }
-
-        match f().await {
-            Ok(v) => return Ok(v),
-            Err(e) => {
-                if attempt >= max_retries {
-                    return Err(e);
-                }
-                attempt += 1;
-            }
-        }
-    }
-}
-
 /// Send an upstream request with automatic retry on transient failures
 /// (SPEC.md §23 — `RevocError::is_transient`, retryable HTTP status codes
 /// 429/502/503/504, and `Retry-After`-aware backoff). The request is rebuilt

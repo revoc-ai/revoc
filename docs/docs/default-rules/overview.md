@@ -1,5 +1,10 @@
 # Default Rules
 
+!!! note "Authoritative reference"
+    The [Rule Catalog](catalog.md) is generated from the code and lists every
+    pattern with the decision the engine actually makes. Where this page
+    differs from it, the catalog is correct.
+
 REVOC ships with 30 governance rules active from the first request with no configuration.
 Rules are organized into four tiers. Higher tier always wins in conflict resolution.
 
@@ -48,18 +53,22 @@ the upstream model or is returned to the client.
 Secret rules are Security tier: they cannot be overridden. If a secret is detected
 in a request, the entire request is blocked (not just the secret field).
 
+Every secret finding is reported and enforced as the umbrella rule
+`secret_block_v1`: the request, response or tool result is blocked. The
+per-secret IDs below appear only in the block reason.
+
 | Rule ID | Entity Detected | Action |
 |---|---|---|
 | `secret_block_v1` | Any secret finding (umbrella rule) | Block |
-| `secret_aws_key_v1` | AWS access key (`AKIA...`) | Remove from output |
-| `secret_aws_secret_v1` | AWS secret key (40-char base64, context) | Remove |
-| `secret_github_token_v1` | GitHub PAT (`ghp_...` or `github_pat_...`) | Remove |
-| `secret_openai_key_v1` | OpenAI API key (`sk-...`) | Remove |
-| `secret_anthropic_key_v1` | Anthropic API key (`sk-ant-...`) | Remove |
-| `secret_generic_api_key_v1` | Generic API key (JSON field detection) | Remove |
-| `secret_private_key_v1` | PEM private key (`-----BEGIN ... PRIVATE KEY-----`) | Remove |
-| `secret_jwt_v1` | JWT token in content | Hash (SHA-256 prefix) |
-| `secret_password_json_v1` | Password field in JSON body | Remove |
+| `secret_aws_key_v1` | AWS access key (`AKIA...`) | Block (as `secret_block_v1`) |
+| `secret_aws_secret_v1` | AWS secret key (40-char base64, context) | Block (as `secret_block_v1`) |
+| `secret_github_token_v1` | GitHub PAT (`ghp_...` or `github_pat_...`) | Block (as `secret_block_v1`) |
+| `secret_openai_key_v1` | OpenAI API key (`sk-...`) | Block (as `secret_block_v1`) |
+| `secret_anthropic_key_v1` | Anthropic API key (`sk-ant-...`) | Block (as `secret_block_v1`) |
+| `secret_generic_api_key_v1` | Generic API key (JSON field detection) | Block (as `secret_block_v1`) |
+| `secret_private_key_v1` | PEM private key (`-----BEGIN ... PRIVATE KEY-----`) | Block (as `secret_block_v1`) |
+| `secret_jwt_v1` | JWT token in content | Block (as `secret_block_v1`) |
+| `secret_password_json_v1` | Password field in JSON body | Block (as `secret_block_v1`) |
 
 ---
 
