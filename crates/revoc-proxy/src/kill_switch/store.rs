@@ -12,7 +12,7 @@ use revoc_core::RevocError;
 /// A durable home for the kill-switch document.
 #[async_trait]
 pub trait KillSwitchStore: Send + Sync {
-    /// Short name reported on `/ready` (`"redis"` / `"sqlite"`).
+    /// Short name reported on `/ready` (`"redis"` / `"postgres"` / `"sqlite"`).
     fn kind(&self) -> &'static str;
 
     /// Read the stored signed document, `None` if nothing was ever written.
@@ -170,6 +170,71 @@ impl KillSwitchStore for SqliteKillSwitchStore {
         } else {
             sqlx::query(
                 "UPDATE kill_switch_state SET version = ?, signed = ? WHERE id = 1 AND version = ?",
+            )
+            .bind(to_i64(new_version)?)
+            .bind(signed)
+            .bind(to_i64(expected)?)
+            .execute(&self.pool)
+            .await
+        };
+        result
+            .map(|r| r.rows_affected() == 1)
+            .map_err(|e| RevocError::Database(e.to_string()))
+    }
+}
+
+// ── Postgres ──────────────────────────────────────────────────────────────────
+
+/// Shared state in the Postgres audit database, used when
+/// `storage.backend = "postgres"` and no Redis is configured: every instance
+/// reconciles against the same row.
+pub struct PostgresKillSwitchStore {
+    pool: sqlx::PgPool,
+}
+
+impl PostgresKillSwitchStore {
+    /// Use `pool`; the `kill_switch_state` table comes from
+    /// `sql/schema_postgres.sql`.
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl KillSwitchStore for PostgresKillSwitchStore {
+    fn kind(&self) -> &'static str {
+        "postgres"
+    }
+
+    async fn load(&self) -> Result<Option<String>, RevocError> {
+        sqlx::query_scalar::<_, String>("SELECT signed FROM kill_switch_state WHERE id = 1")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| RevocError::Database(e.to_string()))
+    }
+
+    async fn compare_and_swap(
+        &self,
+        expected: u64,
+        new_version: u64,
+        signed: &str,
+    ) -> Result<bool, RevocError> {
+        let to_i64 = |v: u64| {
+            i64::try_from(v)
+                .map_err(|_| RevocError::Database("kill-switch version overflow".into()))
+        };
+        let result = if expected == 0 {
+            sqlx::query(
+                "INSERT INTO kill_switch_state (id, version, signed) VALUES (1, $1, $2)
+                 ON CONFLICT (id) DO NOTHING",
+            )
+            .bind(to_i64(new_version)?)
+            .bind(signed)
+            .execute(&self.pool)
+            .await
+        } else {
+            sqlx::query(
+                "UPDATE kill_switch_state SET version = $1, signed = $2 WHERE id = 1 AND version = $3",
             )
             .bind(to_i64(new_version)?)
             .bind(signed)

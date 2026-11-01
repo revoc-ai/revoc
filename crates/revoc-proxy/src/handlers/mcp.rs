@@ -17,6 +17,7 @@ use crate::{
     depth::check_depth,
     handlers::llm::{action_to_str, set_revoc_headers},
     middleware::request_id::{GovernanceDepth, RequestId},
+    storage::session::{self, SessionActivity},
 };
 
 #[allow(clippy::too_many_lines)]
@@ -274,6 +275,19 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
         let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
         let was_normalized = findings.iter().any(|f| f.was_normalized);
 
+        // Session: this call is folded in before policy, so a send that
+        // completes an exfiltration pattern is judged with it (SPEC.md §11).
+        let call_session = session::record(
+            session::load(&state, &caller).await,
+            &caller,
+            &findings,
+            &SessionActivity {
+                tool: Some(&tool_name),
+                rows_read: 0,
+                external_send: session::is_external_send_tool(&tool_name),
+            },
+        );
+
         // ── Step 8: Evaluate policy ────────────────────────────────────────────
         let policy_input = PolicyInput {
             request_id: trace_id.clone(),
@@ -286,7 +300,7 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             tool_call: Some(tool_call.clone()),
             tool_result: None,
             token_usage: None,
-            session_state: None,
+            session_state: Some(call_session.clone()),
             governance_depth: depth,
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
@@ -311,6 +325,8 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
 
         // ── Step 9: BLOCK — UPSTREAM NEVER RECEIVES THE REQUEST ────────────────
         if decision.effective_action.is_blocking() {
+            // The attempt stays on the session record.
+            session::spawn_persist(&state, call_session);
             let resp = mcp_block_response(&mcp_req, &decision, &trace_id, &dash_base);
             publish_mcp_event(
                 &state,
@@ -357,6 +373,7 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             Ok(r) => r,
             Err(e) => {
                 warn!(error = %e, "MCP tool forward failed");
+                session::spawn_persist(&state, call_session);
                 let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
                 return mcp_error_resp(502, body, &trace_id, &dash_base);
             }
@@ -390,6 +407,18 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
 
         let result_value: serde_json::Value =
             serde_json::from_slice(&result_bytes).unwrap_or(serde_json::Value::Null);
+        let result_session = session::record(
+            Some(call_session),
+            &caller,
+            &result_findings,
+            &SessionActivity {
+                rows_read: result_value
+                    .get("result")
+                    .map_or(0, session::rows_in_tool_result),
+                ..SessionActivity::default()
+            },
+        );
+        session::spawn_persist(&state, result_session.clone());
         let result_policy_input = PolicyInput {
             request_id: trace_id.clone(),
             request_type: RequestType::McpToolResult,
@@ -401,7 +430,7 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             tool_call: Some(tool_call.clone()),
             tool_result: Some(result_value),
             token_usage: None,
-            session_state: None,
+            session_state: Some(result_session),
             governance_depth: depth,
             timestamp: chrono::Utc::now().timestamp_millis(),
         };

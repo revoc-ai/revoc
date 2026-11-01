@@ -8,6 +8,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Storage (S7)
+- **Postgres audit store in the proxy.**
+  - `storage.backend = "postgres"` now writes audit events to Postgres. Previously the setting was ignored and every instance wrote to a local SQLite file, even under the compose and Helm defaults.
+  - The table layout matches the admin API, so the dashboard and admin API read the same rows.
+  - Tables are created on startup under an advisory lock.
+  - Startup fails if the database URL is missing or unreachable.
+- **Kill-switch state in Postgres.** Without Redis, the Postgres backend keeps the signed kill-switch document in `kill_switch_state`, shared by every instance.
+- **Redis sessions.** With `REDIS_URL` set, session state is shared across instances (`revoc:session:<org>:<caller>`, TTL `session.ttl_secs`). Previously it was per-process memory.
+- **MCP session recording.**
+  - MCP tool calls now update the caller's session: tool name, rows returned, PII entity types, and whether the tool sends data out.
+  - The session is passed to policy on both the call and the result.
+  - `session_data_exfil_v1` can now fire. Previously MCP requests passed no session, so it never did.
+- **Every exit is audited.** Early returns (kill switch, depth limit, malformed body, 429, upstream failure, fail-closed errors, mock mode) wrote no audit record. They now get a minimal one: `decision` = `reject`/`error`/`block`, `policy_engine` = `exit:<status>`. Unauthenticated 401s are not audited.
+- **`revoc-proxy migrate` works on Postgres.** It used to run the SQLite schema there.
+- **The Redis kill-switch store is now tested** against a real server. CI runs the storage tests against Postgres and Redis service containers.
+
+### Breaking (S7)
+- **Postgres is used when configured.** Deployments with `REVOC_STORAGE__BACKEND=postgres` (the compose and Helm defaults) now need a reachable `DATABASE_URL`. The kill switch also needs `REVOC_KILL_SWITCH_KEY` when there is no Redis; the Helm chart now generates it when either Postgres or Redis is enabled.
+- **More audit rows.** Requests that previously left no record now leave one.
+
 ### Kill-switch and admin plane (S6)
 - **Durable kill-switch state.**
   - State is one versioned document in Redis when `REDIS_URL` is set, otherwise in the local SQLite database.
