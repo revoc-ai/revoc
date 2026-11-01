@@ -1,4 +1,4 @@
-"""Emergency kill-switch tests (D11) — crates/revoc-proxy/src/kill_switch.rs and
+"""Emergency kill-switch tests (D11) — crates/revoc-proxy/src/kill_switch/ and
 handlers/emergency.rs. Endpoints live on the internal port 8081 and are
 authenticated via `X-Admin-Key` (REVOC_ADMIN_KEY set in docker-compose.test.yml).
 """

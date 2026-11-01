@@ -235,7 +235,7 @@ revoc/
 │       ├── main.rs
 │       ├── app.rs
 │       ├── shutdown.rs
-│       ├── kill_switch.rs         ← NEW Day-1 D11
+│       ├── kill_switch/ (mod.rs, service.rs, store.rs)  ← D11
 │       ├── depth.rs               ← NEW Day-1 D9
 │       ├── handlers/ (mod.rs, llm.rs, mcp.rs, embeddings.rs, emergency.rs, health.rs)
 │       ├── middleware/ (mod.rs, auth.rs, request_id.rs, rate_limit.rs, metrics_recorder.rs, security.rs)
@@ -986,7 +986,7 @@ pub fn analyze_tools_list(body: &[u8]) -> ManifestAnalysisResult {
 **MCP Handler integration** (Step 4 in MCP lifecycle): When method = `tools/list`, run
 `analyze_tools_list()` on the response. If findings > 0: add `X-Revoc-Manifest-Warnings: {count}`.
 
-### D11 — Emergency Kill-Switch (revoc-proxy/src/kill_switch.rs)
+### D11 — Emergency Kill-Switch (revoc-proxy/src/kill_switch/)
 
 ```rust
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1038,6 +1038,23 @@ impl KillSwitchState {
 
 **Redis propagation**: On activate, publish JSON to `revoc:kill_switch` channel.
 Background task subscribes and updates local state within ~50ms.
+
+**Durability and propagation.**
+- **The document.** State is one `KillSwitchDoc { version, updated_at, entries }`, stored as `{"doc": "<json>", "sig": "<hex HMAC-SHA256>"}`.
+- **The store.** Redis (`<channel>:state`, shared) when `REDIS_URL` is set, else the local SQLite table `kill_switch_state`.
+- **Writes.** Compare-and-swap on `version`, using an atomic Lua script in Redis that also publishes the new document on `<channel>`.
+- **Startup.** State is loaded before traffic is served.
+- **Reconcile.** Every `reconcile_interval_ms` (2000) each instance re-reads the store and adopts a strictly newer version only, so old documents can't be replayed. Pub/sub delivers changes in ~50 ms.
+- **Signing.** A signature that fails verification means the document is ignored. Redis requires `kill_switch.signing_key_env` (≥ 32 bytes).
+- **Activate.** Applied locally first. A failed write is reported as `durable: false` and retried on each reconcile.
+- **Deactivate.** Persisted first: a failed write returns 503 and lifts nothing.
+- **Store unavailable.** `on_redis_unavailable = "local_only"` keeps the last state (`/ready` reports degraded). `"fail_closed"` blocks all traffic, and `/ready` returns 503, once the store has been unreadable for three intervals, or immediately if it was never read.
+
+**Admin credentials.**
+- Every kill-switch change requires the admin key (`X-Admin-Key`): on the internal API, and on the dashboard regardless of dashboard auth mode.
+- Client API keys never grant it.
+- Startup fails if the admin key is also a client API key.
+
 
 ### D12 — Policy Conflict Resolution (revoc-policy/src/conflict.rs)
 
@@ -1278,7 +1295,9 @@ depth_exceeded_action = "block"
 [kill_switch]
 enabled = true
 redis_channel = "revoc:kill_switch"
-on_redis_unavailable = "local_only"
+on_redis_unavailable = "local_only"   # local_only | fail_closed
+signing_key_env = "REVOC_KILL_SWITCH_KEY"
+reconcile_interval_ms = 2000
 
 [detection]
 normalize_before_scan = true       # MUST default true — evasion defense
@@ -1600,7 +1619,7 @@ Phase  6: revoc-pipeline — deduplication, orchestrator, tests
 Phase  7: revoc-policy — conflict.rs, cache, native engine (30 rules), sidecar, wasm stub
 Phase  8: revoc-redaction — strategy, json_mutator, redactor, tests
 Phase  9: revoc-dashboard — React SPA (build + commit dist/), Rust handler, SSE, REST
-Phase 10: revoc-proxy — kill_switch.rs, depth.rs, emergency.rs, ALL middleware,
+Phase 10: revoc-proxy — kill_switch/, depth.rs, emergency.rs, ALL middleware,
            ALL handlers (kill-switch Step 0 + depth Step 1 in every handler),
            streaming, CLI with emergency commands, Dockerfile
 Phase 11: Rego policies — replace stubs with complete content, OPA test files

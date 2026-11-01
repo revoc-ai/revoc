@@ -149,7 +149,8 @@ governance:
 killSwitch:
   enabled: true
   redisChannel: "revoc:kill_switch"
-  onRedisUnavailable: local_only
+  onRedisUnavailable: local_only   # local_only | fail_closed
+  reconcileIntervalMs: 2000
 
 detection:
   normalizeBeforeScan: true
@@ -180,6 +181,9 @@ secrets:
   # Empty disables the admin API (kill-switch, reload) until you set it.
   adminKey: ""
   apiKeys: "change-me-api-key"
+  # HMAC key (>= 32 bytes) signing the shared kill-switch state in Redis.
+  # Generated on first install and kept across upgrades when left empty.
+  killSwitchSigningKey: ""
   jwtSecret: ""
   openaiApiKey: ""
   anthropicApiKey: ""

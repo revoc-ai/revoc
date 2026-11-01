@@ -494,7 +494,16 @@ pub async fn activate_kill_switch(
         .activate(&req.scope, req.target.as_deref(), reason, DASHBOARD_ACTOR)
         .await
         .map(|()| StatusCode::ACCEPTED)
-        .map_err(|_| StatusCode::BAD_REQUEST)
+        .map_err(|e| kill_switch_error_status(&e))
+}
+
+/// Bad input is 400; anything else (the store could not be written) is 503.
+fn kill_switch_error_status(e: &revoc_core::RevocError) -> StatusCode {
+    if matches!(e, revoc_core::RevocError::RequestParse(_)) {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 /// `POST /dashboard/api/kill-switch/deactivate`
@@ -503,7 +512,9 @@ pub async fn activate_kill_switch(
 ///
 /// # Errors
 /// Returns `StatusCode::BAD_REQUEST` for an unknown scope or a missing
-/// `target` for an org/caller-scoped deactivation.
+/// `target` for an org/caller-scoped deactivation, and
+/// `StatusCode::SERVICE_UNAVAILABLE` when the change could not be persisted
+/// (the switch then stays active).
 pub async fn deactivate_kill_switch(
     State(state): State<DashboardState>,
     Json(req): Json<KillSwitchRequest>,
@@ -513,7 +524,7 @@ pub async fn deactivate_kill_switch(
         .deactivate(&req.scope, req.target.as_deref())
         .await
         .map(|()| StatusCode::ACCEPTED)
-        .map_err(|_| StatusCode::BAD_REQUEST)
+        .map_err(|e| kill_switch_error_status(&e))
 }
 
 // ── Policy validation ─────────────────────────────────────────────────────────

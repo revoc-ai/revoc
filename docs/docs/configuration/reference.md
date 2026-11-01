@@ -86,7 +86,9 @@ depth_exceeded_action = "block"
 [kill_switch]
 enabled = true
 redis_channel = "revoc:kill_switch"
-on_redis_unavailable = "local_only"   # local_only | fail
+on_redis_unavailable = "local_only"   # local_only | fail_closed
+signing_key_env = "REVOC_KILL_SWITCH_KEY"   # HMAC key (>= 32 bytes); required with Redis
+reconcile_interval_ms = 2000
 ```
 
 ## [detection]

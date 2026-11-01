@@ -98,7 +98,7 @@ export OPENAI_BASE_URL=http://localhost:8080
 | SSRF / path traversal | ⚠️ | Literal internal IPs and `../`; encoded or alternate IP forms are not canonicalised yet |
 | Unicode evasion normalization | ✅ | NFKC + zero-width + RTLO/BIDI removal before every detection pass |
 | Fail-closed governance | ✅ | Detection timeouts, detector errors, policy errors and redaction errors block the request |
-| Emergency kill-switch | ⚠️ | Global, per-org, per-caller. State is in memory per instance; Redis pub/sub fan-out is best-effort and not persisted |
+| Emergency kill-switch | ✅ | Global, per-org, per-caller. Signed, versioned state in Redis (shared) or SQLite, loaded at startup and reconciled every 2 s; admin key required to change it |
 | Governance depth guard | ✅ | Max depth 10; prevents infinite agent recursion |
 | Tool manifest analysis | ✅ | Scans MCP `tools/list` for dangerous parameter names and suspicious descriptions |
 | Bidirectional MCP governance | ✅ | Tool arguments and tool results inspected (JSON-RPC over HTTP POST) |
@@ -287,7 +287,6 @@ Known gaps being worked on before 1.0:
 
 - Streamed text is held back by `stream.hold_back_chars` (128); a sensitive
   pattern longer than that can have its start released before it is matched.
-- Kill-switch state is per instance; there is no persisted, reconciled state.
 - All API keys map to a single org; there is no tenant-scoped key registry yet.
 - Audit storage is SQLite only on the proxy; Postgres is used by the admin API.
 - Detection is pattern-based; there is no labelled evaluation corpus or

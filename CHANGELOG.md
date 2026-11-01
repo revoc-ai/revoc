@@ -8,6 +8,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Kill-switch and admin plane (S6)
+- **Durable kill-switch state.**
+  - State is one versioned document in Redis when `REDIS_URL` is set, otherwise in the local SQLite database.
+  - It is loaded before traffic is served, so an active switch survives restarts.
+  - Writes are compare-and-swap.
+- **Reconciled:** every instance re-reads the store every `kill_switch.reconcile_interval_ms` (2 s) and adopts only strictly newer versions. Pub/sub still delivers changes in ~50 ms.
+- **Signed:** the document and pub/sub messages are HMAC-SHA256-signed with `REVOC_KILL_SWITCH_KEY`. Unsigned or forged state from Redis is ignored.
+- **`on_redis_unavailable` is implemented:**
+  - `local_only` keeps the last state and reports degraded.
+  - `fail_closed` (also accepted as `fail`) blocks all traffic while the store is unreadable.
+  - Deactivation now requires a successful store write (503 otherwise).
+  - Activation that could not be persisted is reported as `durable: false` and retried.
+- **`/ready` reports kill-switch state:** version, store, sync age and lockout.
+- **Separate admin credentials.**
+  - Dashboard kill-switch changes now require the admin key (`X-Admin-Key`). Previously any client API key — or no key with dashboard auth `none` — could activate or lift the switch.
+  - The Settings page asks for the admin key per action.
+  - Startup fails if the admin key is also a client API key.
+
+### Breaking (S6)
+- **Redis requires a signing key:** with Redis configured, `REVOC_KILL_SWITCH_KEY` (≥ 32 bytes, same on every instance) is required. The Helm chart generates one if unset; compose users add it to `.env`.
+- **Status responses changed:** the kill-switch status endpoint and `/ready` bodies have new fields, and `/ready` may report `"status": "degraded"`.
+
 ### Streaming (S4/S5)
 - **Rebuilt streaming governance.**
   - An incremental SSE parser reassembles events split across reads.

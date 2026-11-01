@@ -181,20 +181,30 @@ depth_exceeded_action = "block"
 
 # ── Kill-Switch ───────────────────────────────────────────────────────────────
 [kill_switch]
-# Enable the emergency kill-switch subsystem. When active, all AI traffic is
-# blocked within ~50ms across all instances via Redis pub/sub propagation.
-# Health/readiness/metrics endpoints always remain accessible.
-# SPEC.md Non-Negotiable Principle 10.
+# Emergency kill-switch. Activation blocks AI traffic on this instance at
+# once; other instances follow within ~50ms (Redis pub/sub) and at most one
+# reconcile interval. Health/readiness/metrics endpoints stay accessible.
+# SPEC.md Non-Negotiable Principle 10, §9 D11.
+#
+# State is one versioned, HMAC-signed document in a durable store: Redis when
+# REDIS_URL is set (shared by all instances), otherwise the local SQLite
+# database. It is loaded before traffic is served, so it survives restarts.
 enabled = true
 
-# Redis pub/sub channel for kill-switch propagation.
-# All REVOC instances in the same Redis namespace subscribe to this channel.
+# Redis pub/sub channel; the document is stored at "<channel>:state".
 redis_channel = "revoc:kill_switch"
 
-# Behavior when Redis is unavailable during kill-switch activation.
-# Valid values:
-#   local_only — activate in this instance only; other instances are not notified
-#   fail       — reject the activation request if Redis is unreachable
+# Environment variable holding the signing key (>= 32 bytes). Required with
+# Redis; the same key on every instance.
+signing_key_env = "REVOC_KILL_SWITCH_KEY"
+
+# How often each instance re-reads the stored state.
+reconcile_interval_ms = 2000
+
+# When the store cannot be read:
+#   local_only  — keep the last known state; /ready reports "degraded"
+#   fail_closed — block all traffic until the store is readable again
+# Deactivation always requires a successful store write.
 on_redis_unavailable = "local_only"
 
 # ── Detection ─────────────────────────────────────────────────────────────────

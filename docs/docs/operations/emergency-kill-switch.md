@@ -123,29 +123,67 @@ curl -s -X POST http://localhost:8081/internal/emergency/kill-switch/deactivate 
   -d '{"scope": "org", "target": "org_acme_prod"}'
 ```
 
-## Multi-Instance Propagation
+## Durable State and Multi-Instance Propagation
 
-In multi-instance deployments (Helm, docker compose scale), the kill-switch must
-reach all proxy instances within 50ms. REVOC uses Redis pub/sub for propagation:
+Kill-switch state is a single versioned document, signed with HMAC-SHA256, in a
+durable store:
 
-1. The activating instance writes to the `revoc:kill_switch` Redis channel
-2. All other instances have a background subscriber that receives the message
-3. Each instance updates its local `AtomicBool` (for global) or `DashMap` (for org/caller)
-4. Local state update is an in-memory operation — always < 1ms after message receipt
+- **Redis** when `REDIS_URL` is set. Every instance shares it. The document
+  lives at `revoc:kill_switch:state`.
+- **The local SQLite database** otherwise (single instance).
 
-Redis propagation latency is typically 2–10ms on a local cluster. The 50ms budget
-covers Redis RTT + subscriber wakeup + local state update.
+The proxy loads the state **before it serves traffic**, so an active switch
+stays active across restarts and redeploys.
 
-**If Redis is unavailable during activation:**
+When you activate:
+
+1. The instance that receives the request blocks traffic immediately.
+2. It writes the next version of the document with an atomic compare-and-set,
+   so two operators acting at once cannot overwrite each other.
+3. With Redis, the new document is published on `revoc:kill_switch`, and the
+   other instances apply it within ~50 ms.
+4. Every instance also re-reads the store every `reconcile_interval_ms`
+   (default 2 s). An instance that missed the message still converges.
+
+**Signing.** Set `REVOC_KILL_SWITCH_KEY` (at least 32 bytes, the same on every
+instance; `openssl rand -hex 32`). The proxy refuses to start with Redis and no
+key. A document or message that fails verification is ignored, so write access
+to Redis alone cannot switch traffic on or off. Instances never adopt a version
+older than the one they hold, so replaying an old document cannot roll them back.
+The Helm chart generates the key on first install if you do not supply
+`secrets.killSwitchSigningKey`.
+
+**If the store is unavailable:**
 
 ```toml
 [kill_switch]
-on_redis_unavailable = "local_only"   # default — activates on this instance only
-# on_redis_unavailable = "fail"       # rejects activation if Redis is down
+on_redis_unavailable = "local_only"    # default — keep the last known state
+# on_redis_unavailable = "fail_closed" # block all traffic until the store is readable
 ```
 
-With `local_only`, activation succeeds on the receiving instance immediately.
-Other instances will pick up the state on their next Redis reconnect.
+- **Activation** always takes effect locally at once. If it cannot be persisted,
+  the response says `"durable": false` and the instance retries on every reconcile.
+- **Deactivation** is persisted first. If the store cannot be written, the API
+  returns 503 and the switch stays active everywhere.
+
+`GET /ready` includes the kill-switch state. It shows the version, the store,
+whether the store was read recently, and any activations not yet persisted.
+With `fail_closed` and an unreadable store, `/ready` returns 503. With
+`local_only` it reports `"status": "degraded"`.
+
+## Admin Credentials
+
+The kill-switch is operated with the **admin key** (`REVOC_ADMIN_KEY` /
+`auth.admin_key`, at least 16 characters), never with a client API key:
+
+- The internal API (`/internal/emergency/...`, loopback by default) requires
+  `X-Admin-Key`.
+- The dashboard's kill-switch buttons also require the admin key. You type it
+  in on the Settings page and it is sent per request, never stored. Client API
+  keys can view the dashboard but get 403 when changing the switch. This holds
+  even when dashboard auth is `none`.
+- The proxy refuses to start if the admin key is also configured as a client
+  API key.
 
 ## Audit Trail
 
