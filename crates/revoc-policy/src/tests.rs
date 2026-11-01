@@ -24,7 +24,7 @@ fn make_short_cache(ttl_ms: u64) -> Arc<DecisionCache> {
 }
 
 fn native(mode: EnforcementMode) -> NativePolicyEngine {
-    NativePolicyEngine::new(make_cache(), mode)
+    NativePolicyEngine::new(mode)
 }
 
 fn make_finding(ft: FindingType, sev: Severity, entity: Option<PiiEntityType>) -> Finding {
@@ -251,46 +251,89 @@ fn test_is_security_rule_false() {
 // ── DecisionCache tests ───────────────────────────────────────────────────────
 
 #[test]
-fn test_cache_hit_on_second_call() {
-    let engine = NativePolicyEngine::new(make_cache(), EnforcementMode::Enforce);
+fn test_native_engine_never_serves_cached_decisions() {
+    let engine = NativePolicyEngine::new(EnforcementMode::Enforce);
     let input = make_input(vec![]);
+    assert!(!engine.evaluate_sync(&input).cache_hit);
+    assert!(!engine.evaluate_sync(&input).cache_hit);
+}
 
-    let first = engine.evaluate_sync(&input);
-    assert!(!first.cache_hit, "First call must not be a cache hit");
+#[test]
+fn test_cache_hit_on_second_lookup() {
+    let cache = make_cache();
+    let key = DecisionCache::cache_key(&make_input(vec![])).expect("key");
+    assert!(cache.get(&key).is_none());
+    cache.set(&key, PolicyDecision::allow());
+    assert!(cache.get(&key).is_some_and(|d| d.cache_hit));
+}
 
-    let second = engine.evaluate_sync(&input);
-    assert!(
-        second.cache_hit,
-        "Second call with same input must be a cache hit"
+#[test]
+fn test_cache_key_ignores_per_request_fields() {
+    let input1 = make_input(vec![make_finding(
+        FindingType::Pii,
+        Severity::Medium,
+        Some(PiiEntityType::EmailAddress),
+    )]);
+    let mut input2 = input1.clone();
+    input2.request_id = "completely-different-id".into();
+    input2.timestamp += 1000;
+    // Fresh finding id / detected_at, same content
+    input2.findings = vec![make_finding(
+        FindingType::Pii,
+        Severity::Medium,
+        Some(PiiEntityType::EmailAddress),
+    )];
+    assert_eq!(
+        DecisionCache::cache_key(&input1),
+        DecisionCache::cache_key(&input2),
+        "cache key must not depend on request_id, timestamp or finding ids"
     );
 }
 
 #[test]
-fn test_cache_key_stable_different_request_id() {
-    // Two inputs with different request_id but same governance-relevant content
-    let input1 = make_input(vec![]);
-    let mut input2 = make_input(vec![]);
-    input2.request_id = "completely-different-id".into();
+fn test_cache_key_covers_tool_arguments() {
+    let mut a = make_input(vec![]);
+    a.tool_call = Some(revoc_core::McpToolCall {
+        tool_name: "execute_sql".into(),
+        arguments: serde_json::json!({"query": "SELECT 1"}),
+        server_id: None,
+        call_id: None,
+    });
+    let mut b = a.clone();
+    if let Some(tc) = b.tool_call.as_mut() {
+        tc.arguments = serde_json::json!({"query": "DROP TABLE users"});
+    }
+    assert_ne!(DecisionCache::cache_key(&a), DecisionCache::cache_key(&b));
+}
 
-    let key1 = DecisionCache::cache_key(&input1);
-    let key2 = DecisionCache::cache_key(&input2);
-    assert_eq!(key1, key2, "Cache key must not depend on request_id");
+#[test]
+fn test_cache_key_covers_encoded_flag_and_depth() {
+    let plain = make_input(vec![make_finding(
+        FindingType::Pii,
+        Severity::Medium,
+        Some(PiiEntityType::EmailAddress),
+    )]);
+    let mut encoded = plain.clone();
+    encoded.findings[0].was_encoded = true;
+    assert_ne!(
+        DecisionCache::cache_key(&plain),
+        DecisionCache::cache_key(&encoded)
+    );
+    let mut deeper = plain.clone();
+    deeper.governance_depth = 3;
+    assert_ne!(
+        DecisionCache::cache_key(&plain),
+        DecisionCache::cache_key(&deeper)
+    );
 }
 
 #[tokio::test]
 async fn test_cache_evicts_after_ttl() {
-    // 1ms TTL — entry expires almost immediately
     let cache = make_short_cache(1);
-    let engine = NativePolicyEngine::new(cache, EnforcementMode::Enforce);
-    let input = make_input(vec![]);
-
-    let _ = engine.evaluate_sync(&input);
-
-    // Wait for TTL to expire
+    let key = DecisionCache::cache_key(&make_input(vec![])).expect("key");
+    cache.set(&key, PolicyDecision::allow());
     tokio::time::sleep(Duration::from_millis(10)).await;
-
-    let after = engine.evaluate_sync(&input);
-    assert!(!after.cache_hit, "Entry must be evicted after TTL");
+    assert!(cache.get(&key).is_none(), "Entry must be evicted after TTL");
 }
 
 // ── SidecarPolicyEngine tests (fail-open / fail-closed) ───────────────────────

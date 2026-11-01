@@ -83,14 +83,8 @@ fn policy_input_3_pii() -> PolicyInput {
     input
 }
 
-fn native_engine_long_ttl() -> Arc<NativePolicyEngine> {
-    let cache = Arc::new(DecisionCache::new(Duration::from_secs(60), 10_000));
-    Arc::new(NativePolicyEngine::new(cache, EnforcementMode::Enforce))
-}
-
 fn native_engine_no_cache() -> Arc<NativePolicyEngine> {
-    let cache = Arc::new(DecisionCache::new(Duration::from_nanos(1), 10_000));
-    Arc::new(NativePolicyEngine::new(cache, EnforcementMode::Enforce))
+    Arc::new(NativePolicyEngine::new(EnforcementMode::Enforce))
 }
 
 fn make_violation(tier: PolicyRuleTier, action: Action, rule: &str) -> PolicyDecision {
@@ -104,15 +98,13 @@ fn make_violation(tier: PolicyRuleTier, action: Action, rule: &str) -> PolicyDec
 
 // ── benchmarks ────────────────────────────────────────────────────────────────
 
-/// policy_cache hit path. Target: > 1_000_000 ops/s.
+/// policy_cache hit path (OPA sidecar cache). Target: > 1_000_000 ops/s.
+/// Measures key computation plus lookup, which is what a hit costs.
 fn bench_cache_hit(c: &mut Criterion) {
-    let rt = build_rt();
-    let engine = native_engine_long_ttl();
-
-    // Prime the cache before the timed loop starts.
-    let _ = rt
-        .block_on(engine.evaluate(&empty_policy_input()))
-        .unwrap_or_else(|_| PolicyDecision::allow());
+    let cache = DecisionCache::new(Duration::from_secs(60), 10_000);
+    if let Some(key) = DecisionCache::cache_key(&empty_policy_input()) {
+        cache.set(&key, PolicyDecision::allow());
+    }
 
     let mut g = c.benchmark_group("policy_cache");
     g.throughput(Throughput::Elements(1));
@@ -120,14 +112,11 @@ fn bench_cache_hit(c: &mut Criterion) {
     g.measurement_time(std::time::Duration::from_secs(5));
     g.sample_size(500);
 
-    // Target: > 1_000_000 ops/s on cache-hit path
     g.bench_function("hit_target_1_000_000_ops", |b| {
         b.iter(|| {
             let input = criterion::black_box(empty_policy_input());
-            let decision = rt
-                .block_on(engine.evaluate(&input))
-                .unwrap_or_else(|_| PolicyDecision::allow());
-            criterion::black_box(decision);
+            let hit = DecisionCache::cache_key(&input).and_then(|k| cache.get(&k));
+            criterion::black_box(hit);
         });
     });
     g.finish();

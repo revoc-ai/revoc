@@ -6,7 +6,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.1.0-beta.1] — Unreleased
+## [Unreleased]
+
+### Security
+- The native policy engine no longer caches decisions. The OPA sidecar cache
+  key now covers the whole policy input (tool arguments and results, messages,
+  findings including `was_encoded`, depth, caller), and session-dependent
+  decisions are never cached.
+- Request bodies are size-limited while streaming instead of after full
+  buffering; upstream responses (LLM, embeddings, MCP tools, sampling) are
+  capped at `server.max_response_body_bytes` and return 502 when exceeded.
+- Concurrency limits per org (tenant) and per proxy, in addition to per caller
+  (`server.max_concurrent_per_caller` / `_per_org` / `_total`). 429 responses
+  now carry the `X-Revoc-*` headers and `Retry-After`.
+- Upstream retries only when the request provably was not processed (connect
+  failure or HTTP 429), so completions are never double-billed.
+- An ONNX inference error now fails the detection stage instead of skipping
+  the field.
+
+### Changed
+- Regex detection runs on a CPU-bounded blocking pool instead of the async
+  workers.
+
+## [0.1.0-beta.1] — 2026-11-01
 
 First public beta. Not yet recommended as the only control in front of
 production traffic; see "Project status" in the README.

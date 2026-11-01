@@ -300,7 +300,19 @@ pub async fn embeddings_handler(
         let status =
             StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let upstream_headers = upstream_resp.headers().clone();
-        let resp_bytes = upstream_resp.bytes().await.unwrap_or_default();
+        let resp_bytes = match crate::upstream::body::read_response_limited(
+            upstream_resp,
+            state.config.server.max_response_body_bytes,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(error = %e, "Upstream response unreadable or too large");
+                let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                return error_resp(502, body, &trace_id, &dash_base, overall_start);
+            }
+        };
         let mut resp = Response::builder()
             .status(status)
             .body(Body::from(resp_bytes))
@@ -323,7 +335,19 @@ pub async fn embeddings_handler(
 
     // ── Step 19: Set ALL response headers ─────────────────────────────────────
     let resp_status = StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::OK);
-    let resp_body = upstream_resp.bytes().await.unwrap_or_default();
+    let resp_body = match crate::upstream::body::read_response_limited(
+        upstream_resp,
+        state.config.server.max_response_body_bytes,
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(error = %e, "Upstream response unreadable or too large");
+            let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+            return error_resp(502, body, &trace_id, &dash_base, overall_start);
+        }
+    };
     let mut resp = Response::builder()
         .status(resp_status)
         .header("Content-Type", "application/json")

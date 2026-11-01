@@ -47,10 +47,9 @@ impl RevocPolicyEngine {
         ));
 
         let engine = match cfg.policy.engine.as_str() {
-            "native" | "" => RevocPolicyEngine::Native(Arc::new(NativePolicyEngine::new(
-                cache,
-                enforcement_mode,
-            ))),
+            "native" | "" => {
+                RevocPolicyEngine::Native(Arc::new(NativePolicyEngine::new(enforcement_mode)))
+            }
 
             "sidecar" => {
                 let opa_url = cfg.policy.opa_eval_url();
@@ -65,7 +64,6 @@ impl RevocPolicyEngine {
 
             "wasm" => RevocPolicyEngine::Wasm(Arc::new(WasmPolicyEngine::new(
                 &cfg.policy.wasm_bundle_path,
-                cache,
                 enforcement_mode,
                 cfg.policy.fail_open,
             )?)),

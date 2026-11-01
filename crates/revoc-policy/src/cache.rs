@@ -91,61 +91,62 @@ impl DecisionCache {
         }
     }
 
-    /// Compute a stable SHA-256 cache key from the policy-relevant fields of `input`.
+    /// Compute a SHA-256 cache key over the whole decision input.
     ///
-    /// Intentionally excludes `request_id` and `timestamp` which differ per-request
-    /// even when the governance-relevant content is identical.
-    pub fn cache_key(input: &PolicyInput) -> String {
+    /// Hashes a canonical JSON form of `input` (object keys sorted
+    /// recursively) with only the fields that change on every request
+    /// removed: `request_id`, `timestamp`, and each finding's `id` and
+    /// `detected_at`. Everything else — tool arguments, tool results,
+    /// messages, findings (including `was_encoded`), depth, caller and
+    /// session state — is part of the key, so two inputs share a key only
+    /// when the policy sees identical data. Returns `None` if `input` cannot
+    /// be serialised; callers then evaluate without caching.
+    pub fn cache_key(input: &PolicyInput) -> Option<String> {
+        let mut value = serde_json::to_value(input).ok()?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove("request_id");
+            obj.remove("timestamp");
+            if let Some(findings) = obj.get_mut("findings").and_then(|f| f.as_array_mut()) {
+                for f in findings.iter_mut().filter_map(|f| f.as_object_mut()) {
+                    f.remove("id");
+                    f.remove("detected_at");
+                }
+            }
+        }
         let mut hasher = Sha256::new();
+        write_canonical(&value, &mut hasher);
+        Some(hex::encode(hasher.finalize()))
+    }
+}
 
-        // Request type
-        hasher.update(format!("{:?}", input.request_type));
-
-        // Caller identity
-        hasher.update(&input.caller.environment);
-        hasher.update(&input.caller.org_id);
-        hasher.update(input.caller.team.as_deref().unwrap_or(""));
-        hasher.update(&input.caller.caller_id);
-
-        // Findings — sorted for stability (order of detection may vary)
-        let mut finding_keys: Vec<String> = input
-            .findings
-            .iter()
-            .map(|f| {
-                // Include `pattern_name` metadata (set by regex_detector) so
-                // findings that share a FindingType but stem from distinct
-                // detection patterns (and thus distinct applicable_rules,
-                // e.g. DdlMutation from "ddl_mutation" vs "delete_no_where"
-                // vs "mass_delete") do not collide on the same cache key.
-                let pattern_name = f
-                    .metadata
-                    .get("pattern_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                format!(
-                    "{:?}:{}:{}",
-                    f.finding_type,
-                    f.pii_entity
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_default(),
-                    pattern_name
-                )
-            })
-            .collect();
-        finding_keys.sort();
-        for fk in &finding_keys {
-            hasher.update(fk);
+/// Feed `v` into `hasher` as canonical JSON: object keys sorted, no whitespace.
+fn write_canonical(v: &serde_json::Value, hasher: &mut Sha256) {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            hasher.update(b"{");
+            for (i, k) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    hasher.update(b",");
+                }
+                hasher.update(Value::String(k.clone()).to_string().as_bytes());
+                hasher.update(b":");
+                write_canonical(&map[k], hasher);
+            }
+            hasher.update(b"}");
         }
-
-        // Tool call name (if any)
-        if let Some(call) = &input.tool_call {
-            hasher.update(&call.tool_name);
+        Value::Array(items) => {
+            hasher.update(b"[");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    hasher.update(b",");
+                }
+                write_canonical(item, hasher);
+            }
+            hasher.update(b"]");
         }
-
-        // Model
-        hasher.update(input.model.as_deref().unwrap_or(""));
-
-        hex::encode(hasher.finalize())
+        other => hasher.update(other.to_string().as_bytes()),
     }
 }

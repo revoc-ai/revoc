@@ -27,7 +27,7 @@
 //! opa build -t wasm policies/default/ -o bundle.tar.gz
 //! ```
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use serde_json::Value as Json;
@@ -38,7 +38,6 @@ use revoc_core::{
     EnforcementMode, PolicyDecision, PolicyEngine, PolicyEngineMode, PolicyInput, RevocError,
 };
 
-use crate::cache::DecisionCache;
 use crate::native::NativePolicyEngine;
 
 /// Typed handles to the OPA WASM ABI exports, resolved once at load time so
@@ -117,11 +116,10 @@ impl WasmPolicyEngine {
     /// and silently running a different policy would hide a misconfiguration.
     pub fn new(
         bundle_path: &str,
-        cache: Arc<DecisionCache>,
         enforcement_mode: EnforcementMode,
         fail_open: bool,
     ) -> Result<Self, RevocError> {
-        let fallback = NativePolicyEngine::new(cache, enforcement_mode);
+        let fallback = NativePolicyEngine::new(enforcement_mode);
 
         let loaded = if bundle_path.is_empty() {
             Err(RevocError::Configuration(
@@ -553,8 +551,7 @@ impl PolicyEngine for WasmPolicyEngine {
         // as at startup. This is the correct WASM reload semantic: if a policy
         // author pushes a new bundle the proxy manager swaps the whole engine
         // via `arc_swap`, but a reload() on the *existing* engine refreshes the
-        // runtime state and also refreshes the native fallback's decision cache
-        // so the two engines stay in sync.
+        // runtime state.
         if let Some(bundle) = &self.bundle {
             let mut new_store: Store<()> = Store::new(&bundle.engine, ());
             let new_instance = Instance::new(&mut new_store, &bundle.module, &[] as &[Extern])
@@ -585,7 +582,6 @@ impl PolicyEngine for WasmPolicyEngine {
             *guard = new_runtime;
         }
 
-        // Refresh the native fallback's decision cache regardless.
         self.fallback.reload().await
     }
 
@@ -616,35 +612,21 @@ mod tests {
         assert!(matches!(err, RevocError::PolicyEvaluation(_)));
     }
 
-    fn cache() -> Arc<DecisionCache> {
-        Arc::new(DecisionCache::new(std::time::Duration::from_secs(1), 10))
-    }
-
     #[test]
     fn missing_bundle_refuses_to_start_when_fail_closed() {
-        let res = WasmPolicyEngine::new(
-            "/no/such/bundle.wasm",
-            cache(),
-            EnforcementMode::Enforce,
-            false,
-        );
+        let res = WasmPolicyEngine::new("/no/such/bundle.wasm", EnforcementMode::Enforce, false);
         assert!(matches!(res, Err(RevocError::Configuration(_))));
     }
 
     #[test]
     fn empty_bundle_path_refuses_to_start_when_fail_closed() {
-        let res = WasmPolicyEngine::new("", cache(), EnforcementMode::Enforce, false);
+        let res = WasmPolicyEngine::new("", EnforcementMode::Enforce, false);
         assert!(matches!(res, Err(RevocError::Configuration(_))));
     }
 
     #[test]
     fn missing_bundle_falls_back_only_when_fail_open() {
-        let res = WasmPolicyEngine::new(
-            "/no/such/bundle.wasm",
-            cache(),
-            EnforcementMode::Enforce,
-            true,
-        );
+        let res = WasmPolicyEngine::new("/no/such/bundle.wasm", EnforcementMode::Enforce, true);
         assert!(res.is_ok());
     }
 

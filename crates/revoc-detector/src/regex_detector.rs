@@ -28,7 +28,6 @@ const POST_MATCH_WINDOW: usize = 512;
 #[derive(Debug, Default)]
 pub struct RegexDetector;
 
-#[allow(clippy::too_many_lines)]
 #[async_trait]
 impl DetectionStage for RegexDetector {
     fn name(&self) -> &'static str {
@@ -39,7 +38,18 @@ impl DetectionStage for RegexDetector {
         DetectionTier::Regex
     }
 
+    /// Runs the scan on the bounded CPU pool so large bodies never stall the
+    /// async workers that serve other requests.
     async fn detect(&self, input: &InspectionInput) -> Result<Vec<Finding>, RevocError> {
+        let input = input.clone();
+        crate::cpu_pool::run(move || Self::scan(&input)).await
+    }
+}
+
+impl RegexDetector {
+    /// Scan every text field of `input` synchronously (CPU-bound).
+    #[allow(clippy::too_many_lines)]
+    fn scan(input: &InspectionInput) -> Vec<Finding> {
         let mut findings: Vec<Finding> = Vec::new();
         let fields = extract_all_text_fields(input);
 
@@ -202,7 +212,7 @@ impl DetectionStage for RegexDetector {
 
         // Sort by severity (descending) for consistent output
         findings.sort_by(|a, b| b.severity.cmp(&a.severity));
-        Ok(findings)
+        findings
     }
 }
 
@@ -292,11 +302,9 @@ fn extract_json_strings(value: &serde_json::Value, path: &str, out: &mut Vec<(St
 impl RegexDetector {
     /// Run detection synchronously (blocking) for use in non-async tests.
     #[cfg(test)]
+    #[allow(clippy::unused_self)]
     pub fn detect_sync(&self, input: &InspectionInput) -> Vec<Finding> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("test runtime");
-        rt.block_on(async { self.detect(input).await.unwrap_or_default() })
+        Self::scan(input)
     }
 }
 

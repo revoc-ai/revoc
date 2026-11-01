@@ -2,52 +2,35 @@
 //!
 //! Zero external dependencies in the hot path. Used by default in Tier 1 and Tier 2.
 
-use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use tracing::debug;
 
 use revoc_core::{
     EnforcementMode, Finding, FindingType, PiiEntityType, PolicyDecision, PolicyEngine,
     PolicyEngineMode, PolicyInput, PolicyRuleTier, RequestType, RevocError, Severity,
 };
 
-use crate::cache::DecisionCache;
 use crate::conflict;
 
 // ── NativePolicyEngine ────────────────────────────────────────────────────────
 
 /// Pure-Rust policy engine implementing all 30 default governance rules.
+///
+/// Uncached: evaluation is a few microseconds, so a decision cache would only
+/// add the risk of reusing a decision for an input it was not made for.
 pub struct NativePolicyEngine {
-    cache: Arc<DecisionCache>,
     enforcement_mode: EnforcementMode,
 }
 
 impl NativePolicyEngine {
-    /// Create a new engine with the given cache and enforcement mode.
-    pub fn new(cache: Arc<DecisionCache>, enforcement_mode: EnforcementMode) -> Self {
-        Self {
-            cache,
-            enforcement_mode,
-        }
+    /// Create a new engine with the given enforcement mode.
+    pub fn new(enforcement_mode: EnforcementMode) -> Self {
+        Self { enforcement_mode }
     }
 
     /// Evaluate all 30 default rules synchronously and return the resolved decision.
     pub fn evaluate_sync(&self, input: &PolicyInput) -> PolicyDecision {
-        let cache_key = DecisionCache::cache_key(input);
-
-        // Cache hit
-        if let Some(cached) = self.cache.get(&cache_key) {
-            debug!(cache_hit = true, "Policy decision served from cache");
-            let result = if self.enforcement_mode == EnforcementMode::Shadow {
-                cached.apply_shadow()
-            } else {
-                cached
-            };
-            return result;
-        }
-
         let start = Instant::now();
         let mut violations: Vec<PolicyDecision> = Vec::new();
 
@@ -75,9 +58,6 @@ impl NativePolicyEngine {
 
         decision.eval_duration_ms = start.elapsed().as_secs_f64() * 1000.0;
         decision.policy_engine = PolicyEngineMode::Native;
-
-        // Store in cache (before applying shadow so the stored decision is real)
-        self.cache.set(&cache_key, decision.clone());
 
         // Apply shadow mode: keep action for recording, set effective_action=Audit
         if self.enforcement_mode == EnforcementMode::Shadow {
@@ -202,8 +182,8 @@ impl PolicyEngine for NativePolicyEngine {
         Ok(self.evaluate_sync(input))
     }
 
+    /// The 30 default rules are compiled in; there is no state to reload.
     async fn reload(&self) -> Result<(), RevocError> {
-        self.cache.invalidate_all();
         Ok(())
     }
 

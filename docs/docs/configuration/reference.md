@@ -16,6 +16,9 @@ dashboard_port = 3000           # 0 = dashboard disabled
 environment = "production"
 max_request_body_bytes = 10485760    # 10 MB
 max_response_body_bytes = 52428800   # 50 MB
+max_concurrent_per_caller = 50        # in-flight requests per API key
+max_concurrent_per_org = 200          # in-flight requests per org (tenant)
+max_concurrent_total = 1000           # in-flight requests per proxy instance
 shutdown_timeout_secs = 120
 http2_enabled = true
 dashboard_base_url = "http://localhost:3000"

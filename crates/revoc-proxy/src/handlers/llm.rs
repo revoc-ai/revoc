@@ -8,7 +8,6 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Json, Response},
 };
-use http_body_util::BodyExt as _;
 use tracing::{info, warn, Instrument};
 
 use revoc_core::{
@@ -469,7 +468,26 @@ async fn run_llm_handler(
         let status =
             StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let upstream_headers = upstream_resp.headers().clone();
-        let body_bytes = upstream_resp.bytes().await.unwrap_or_default();
+        let body_bytes = match crate::upstream::body::read_response_limited(
+            upstream_resp,
+            state.config.server.max_response_body_bytes,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(error = %e, "Upstream error body unreadable or too large");
+                let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                return make_error_response(
+                    502,
+                    body,
+                    &trace_id,
+                    &request_id,
+                    &dash_base,
+                    overall_start,
+                );
+            }
+        };
 
         let mut resp = Response::builder()
             .status(status)
@@ -511,7 +529,26 @@ async fn run_llm_handler(
 
     // ── Steps 16–17: Non-streaming response ───────────────────────────────────
     let resp_status = StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::OK);
-    let resp_body = upstream_resp.bytes().await.unwrap_or_default();
+    let resp_body = match crate::upstream::body::read_response_limited(
+        upstream_resp,
+        state.config.server.max_response_body_bytes,
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(error = %e, "Upstream response unreadable or too large");
+            let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+            return make_error_response(
+                502,
+                body,
+                &trace_id,
+                &request_id,
+                &dash_base,
+                overall_start,
+            );
+        }
+    };
 
     // Step 16: extract token usage + estimate cost from the upstream JSON body
     let token_usage = extract_token_usage(&resp_body, &model);
@@ -839,12 +876,10 @@ fn make_error_response(
 }
 
 pub(crate) async fn read_body_limited(body: Body, max_bytes: usize) -> Result<Vec<u8>, String> {
-    let collected = body.collect().await.map_err(|e| e.to_string())?;
-    let bytes = collected.to_bytes();
-    if bytes.len() > max_bytes {
-        return Err(format!("Body too large: {} > {}", bytes.len(), max_bytes));
-    }
-    Ok(bytes.to_vec())
+    crate::upstream::body::read_request_limited(body, max_bytes)
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| e.to_string())
 }
 
 fn extract_messages(parsed: &serde_json::Value) -> Vec<ChatMessage> {

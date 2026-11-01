@@ -488,7 +488,10 @@ impl DetectionStage for OnnxDetector {
                         findings.append(&mut field_findings);
                     }
                     Err(e) => {
-                        warn!(error = %e, field = %field, "ONNX inference failed for field — skipping");
+                        // Fail the stage: a field the model could not scan is
+                        // not a clean field (the engine then fails closed).
+                        warn!(error = %e, field = %field, "ONNX inference failed for field");
+                        return Err(e);
                     }
                 }
             }
