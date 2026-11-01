@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import structlog
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_db
 
 router = APIRouter(prefix="/api/v1", tags=["health"])
+logger = structlog.get_logger(__name__)
 
 
 @router.get("/health")
@@ -26,7 +28,9 @@ async def health(
         await db.execute(text("SELECT 1"))
         checks["database"] = "ok"
     except Exception as exc:  # noqa: BLE001
-        checks["database"] = f"error: {exc}"
+        # Log the detail server-side only; never return exception text to callers.
+        logger.warning("health_check_database_failed", error=str(exc))
+        checks["database"] = "error"
 
     # OPA (optional — OPA may not be running in all tiers)
     opa_url = f"{settings.opa_url}/health"
