@@ -82,9 +82,14 @@ impl SidecarPolicyEngine {
 #[async_trait]
 impl PolicyEngine for SidecarPolicyEngine {
     async fn evaluate(&self, input: &PolicyInput) -> Result<PolicyDecision, RevocError> {
-        let cache_key = DecisionCache::cache_key(input);
+        // Session-dependent decisions change as the session evolves; never cache them.
+        let cache_key = if input.session_state.is_some() {
+            None
+        } else {
+            DecisionCache::cache_key(input)
+        };
 
-        if let Some(cached) = self.cache.get(&cache_key) {
+        if let Some(cached) = cache_key.as_deref().and_then(|k| self.cache.get(k)) {
             debug!(cache_hit = true, "OPA sidecar: decision served from cache");
             let result = if self.enforcement_mode == EnforcementMode::Shadow {
                 cached.apply_shadow()
@@ -144,7 +149,9 @@ impl PolicyEngine for SidecarPolicyEngine {
         decision.eval_duration_ms = start.elapsed().as_secs_f64() * 1000.0;
         decision.policy_engine = PolicyEngineMode::OpaHttp;
 
-        self.cache.set(&cache_key, decision.clone());
+        if let Some(key) = &cache_key {
+            self.cache.set(key, decision.clone());
+        }
 
         if self.enforcement_mode == EnforcementMode::Shadow {
             decision = decision.apply_shadow();

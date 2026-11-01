@@ -511,8 +511,12 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
         Duration::from_secs(cfg.session.ttl_secs),
     ));
 
-    // Rate limiter (max 50 concurrent requests per caller)
-    let rate_limiter = RateLimiter::new(50);
+    // Concurrency limits: per caller, per org (tenant) and process-wide
+    let rate_limiter = RateLimiter::new(
+        cfg.server.max_concurrent_per_caller,
+        cfg.server.max_concurrent_per_org,
+        cfg.server.max_concurrent_total,
+    );
 
     let pending_audit_writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 

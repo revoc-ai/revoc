@@ -3,7 +3,6 @@
 use std::time::Instant;
 
 use axum::{body::Body, extract::State, http::StatusCode, response::Response};
-use http_body_util::BodyExt as _;
 use tracing::{info, warn, Instrument};
 
 use revoc_core::{
@@ -57,14 +56,11 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
     // ── Step 2: Read body ──────────────────────────────────────────────────────
     let max_body = state.config.server.max_request_body_bytes;
     let (parts, body) = req.into_parts();
-    let body_bytes = match body.collect().await {
-        Ok(c) => {
-            let b = c.to_bytes();
-            if b.len() > max_body {
-                let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
-                return mcp_error_resp(413, body, &trace_id, &dash_base);
-            }
-            b
+    let body_bytes = match crate::upstream::body::read_request_limited(body, max_body).await {
+        Ok(b) => b,
+        Err(revoc_core::RevocError::BodyTooLarge { .. }) => {
+            let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+            return mcp_error_resp(413, body, &trace_id, &dash_base);
         }
         Err(e) => {
             warn!(error = %e, "MCP body read error");
@@ -712,7 +708,19 @@ async fn handle_sampling_create_message(
         }
     };
     let status = upstream_resp.status().as_u16();
-    let resp_bytes = upstream_resp.bytes().await.unwrap_or_default();
+    let resp_bytes = match crate::upstream::body::read_response_limited(
+        upstream_resp,
+        state.config.server.max_response_body_bytes,
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(error = %e, "Sampling upstream response unreadable or too large");
+            let body = RevocErrorResponse::internal_error(trace_id, dash_base);
+            return mcp_error_resp(502, body, trace_id, dash_base);
+        }
+    };
     let upstream_ms = upstream_start.elapsed().as_secs_f64() * 1000.0;
     let total_ms = overall_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -894,7 +902,11 @@ async fn forward_to_mcp_server(
         })?;
 
     let status = resp.status().as_u16();
-    let bytes = resp.bytes().await.unwrap_or_default();
+    let bytes = crate::upstream::body::read_response_limited(
+        resp,
+        state.config.server.max_response_body_bytes,
+    )
+    .await?;
     Ok((status, bytes))
 }
 

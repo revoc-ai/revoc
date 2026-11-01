@@ -9,9 +9,13 @@ use revoc_core::RevocError;
 
 use super::router::UpstreamRouter;
 
-/// Retry policy: which status codes trigger a retry.
+/// Retry policy: which upstream status codes trigger a retry.
+///
+/// Only 429: the provider rejected the request without processing it.
+/// 502/503/504 are not retried because completions are not idempotent — the
+/// upstream may already have run (and billed) the request.
 pub fn is_retryable_status(status: u16) -> bool {
-    matches!(status, 429 | 502 | 503 | 504)
+    status == 429
 }
 
 /// Compute the delay for retry attempt `n` (0-indexed) with jitter.
@@ -113,11 +117,10 @@ pub async fn send_with_retries(
                 return Ok(resp);
             }
             Err(e) => {
-                // Transport-level connect/timeout failures are transient —
-                // the upstream may be momentarily unreachable (SPEC.md §23,
-                // `RevocError::is_transient` covers the analogous `Upstream`
-                // status-based case once we have a response).
-                let transient = e.is_connect() || e.is_timeout();
+                // Retry only when the connection was never established, so
+                // the request cannot have reached the provider. A timeout may
+                // fire after the body was sent, so it is not retried.
+                let transient = e.is_connect();
                 if attempt < max_retries && transient {
                     let delay = backoff_delay(attempt);
                     warn!(
@@ -130,6 +133,19 @@ pub async fn send_with_retries(
                 }
                 return Err(RevocError::HttpClient(e));
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_429_is_retried() {
+        assert!(is_retryable_status(429));
+        for s in [500, 502, 503, 504, 400, 200] {
+            assert!(!is_retryable_status(s), "{s} must not be retried");
         }
     }
 }

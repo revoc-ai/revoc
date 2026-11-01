@@ -179,6 +179,15 @@ fn default_internal_host() -> String {
 fn default_internal_port() -> u16 {
     8081
 }
+fn default_max_concurrent_per_caller() -> usize {
+    50
+}
+fn default_max_concurrent_per_org() -> usize {
+    200
+}
+fn default_max_concurrent_total() -> usize {
+    1000
+}
 fn default_environment() -> String {
     "production".into()
 }
@@ -225,6 +234,19 @@ pub struct ServerConfig {
     #[serde(default = "default_internal_port")]
     pub internal_port: u16,
 
+    /// Requests one caller may have in flight at once (default `50`).
+    #[serde(default = "default_max_concurrent_per_caller")]
+    pub max_concurrent_per_caller: usize,
+
+    /// Requests one org (tenant) may have in flight across all its callers
+    /// (default `200`).
+    #[serde(default = "default_max_concurrent_per_org")]
+    pub max_concurrent_per_org: usize,
+
+    /// Requests the whole proxy may have in flight (default `1000`).
+    #[serde(default = "default_max_concurrent_total")]
+    pub max_concurrent_total: usize,
+
     /// Deployment environment label (default `"production"`).
     #[serde(default = "default_environment")]
     pub environment: String,
@@ -258,6 +280,9 @@ impl Default for ServerConfig {
             dashboard_port: default_dashboard_port(),
             internal_host: default_internal_host(),
             internal_port: default_internal_port(),
+            max_concurrent_per_caller: default_max_concurrent_per_caller(),
+            max_concurrent_per_org: default_max_concurrent_per_org(),
+            max_concurrent_total: default_max_concurrent_total(),
             environment: default_environment(),
             max_request_body_bytes: default_max_request_body_bytes(),
             max_response_body_bytes: default_max_response_body_bytes(),

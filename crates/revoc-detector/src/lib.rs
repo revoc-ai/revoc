@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod cpu_pool;
 pub mod encoding;
 pub mod engine;
 pub mod enrichers;
