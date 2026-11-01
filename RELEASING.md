@@ -83,8 +83,8 @@ questions all go through GitHub features enabled in step 1.
 5. Tag from `main` and push the tag:
 
    ```bash
-   git tag -s v1.0.0 -m "REVOC v1.0.0"
-   git push origin v1.0.0
+   git tag -s v0.1.0-beta.1 -m "REVOC v0.1.0-beta.1"
+   git push origin v0.1.0-beta.1
    ```
 
 6. Watch **Actions → Release**: tests → binaries → GHCR images → Helm chart →
@@ -93,8 +93,8 @@ questions all go through GitHub features enabled in step 1.
 7. Check that it all landed:
 
    ```bash
-   pip install revoc-sdk==1.0.0
-   npm view @revoc-io/sdk@1.0.0
-   docker pull ghcr.io/revoc-ai/revoc:1.0.0
+   pip install --pre revoc-sdk==0.1.0b1
+   npm view @revoc-io/sdk@beta version
+   docker pull ghcr.io/revoc-ai/revoc:0.1.0-beta.1
    curl -sI https://revoc.io | head -1
    ```

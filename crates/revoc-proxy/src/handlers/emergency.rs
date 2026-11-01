@@ -13,17 +13,36 @@ use crate::{
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-fn validate_admin_key(provided: &str, state: &AppState) -> bool {
-    // Env var overrides (e.g. `REVOC_ADMIN_KEY`, or the legacy `REVOC_API_KEYS`
-    // fallback) always win — they let operators rotate the admin key without
-    // a redeploy. If neither is set, fall back to `auth.admin_key` from the
-    // loaded config, which itself defaults to `"dev-admin-key"` so the
-    // single-container smoke test (`auth.mode = "none"`) works out of the box.
-    let expected = std::env::var("REVOC_ADMIN_KEY")
-        .or_else(|_| std::env::var("REVOC_API_KEYS"))
-        .unwrap_or_else(|_| state.config.auth.admin_key.clone());
+/// Minimum accepted admin key length; shorter keys are treated as unset.
+pub const MIN_ADMIN_KEY_LEN: usize = 16;
 
+/// Validate the `X-Admin-Key` header against the configured admin key.
+///
+/// `REVOC_ADMIN_KEY` overrides `auth.admin_key` so operators can rotate the
+/// key without a config change. Client API keys (`REVOC_API_KEYS`) are never
+/// accepted. With no key configured (or one shorter than
+/// [`MIN_ADMIN_KEY_LEN`]) every request is rejected.
+pub fn validate_admin_key(provided: &str, state: &AppState) -> bool {
+    let expected =
+        std::env::var("REVOC_ADMIN_KEY").unwrap_or_else(|_| state.config.auth.admin_key.clone());
+    if expected.len() < MIN_ADMIN_KEY_LEN {
+        return false;
+    }
     provided.as_bytes().ct_eq(expected.as_bytes()).into()
+}
+
+/// Extract `X-Admin-Key` and validate it; `Err(401)` when missing or wrong.
+pub fn require_admin(headers: &axum::http::HeaderMap, state: &AppState) -> Result<(), StatusCode> {
+    let provided = headers
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if validate_admin_key(provided, state) {
+        Ok(())
+    } else {
+        warn!("Internal admin API: unauthorized request");
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }
 
 // ── Request / response types ──────────────────────────────────────────────────
@@ -154,13 +173,17 @@ pub async fn deactivate_handler(
 }
 
 /// `GET /internal/emergency/kill-switch/status`
-pub async fn status_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+pub async fn status_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    require_admin(&headers, &state)?;
     let snap = state.kill_switch.status_snapshot();
-    Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "global": snap.global,
         "by_org": snap.by_org.iter().map(|(k, _)| k).collect::<Vec<_>>(),
         "by_caller": snap.by_caller.iter().map(|(k, _)| k).collect::<Vec<_>>(),
-    }))
+    })))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

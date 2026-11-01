@@ -50,7 +50,7 @@ OPA_BASE = "http://localhost:8191"
 # JWT secret must match REVOC_JWT_SECRET in the revoc-proxy-jwt compose service
 JWT_SECRET = "test-jwt-secret-for-integration-tests"
 
-ADMIN_KEY = "dev-admin-key"
+ADMIN_KEY = "dev-admin-key-local-only"
 
 
 def _compose(*args: str) -> subprocess.CompletedProcess:
@@ -149,7 +149,9 @@ async def dashboard_client():
 
 @pytest.fixture
 async def internal_client():
-    async with httpx.AsyncClient(base_url=INTERNAL_BASE, timeout=30.0) as client:
+    async with httpx.AsyncClient(
+        base_url=INTERNAL_BASE, timeout=30.0, headers={"X-Admin-Key": ADMIN_KEY}
+    ) as client:
         yield client
 
 

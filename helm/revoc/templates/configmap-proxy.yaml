@@ -8,6 +8,10 @@ data:
   REVOC_SERVER__HOST: "0.0.0.0"
   REVOC_SERVER__PORT: {{ .Values.proxy.ports.proxy | quote }}
   REVOC_SERVER__DASHBOARD_PORT: {{ .Values.proxy.ports.dashboard | quote }}
+  # Pod-internal bind for the admin API; reachable only via the internal
+  # ClusterIP Service (and the NetworkPolicy, when enabled).
+  REVOC_SERVER__INTERNAL_HOST: "0.0.0.0"
+  REVOC_SERVER__INTERNAL_PORT: {{ .Values.proxy.ports.internal | quote }}
   REVOC_SERVER__ENVIRONMENT: "production"
   REVOC_SERVER__DASHBOARD_BASE_URL: {{ .Values.dashboard.baseUrl | quote }}
 

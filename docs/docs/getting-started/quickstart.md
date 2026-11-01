@@ -17,10 +17,12 @@ Every command is exact and runnable.
 docker run -d \
   -p 8080:8080 \
   -p 3000:3000 \
-  -p 8081:8081 \
+  -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 \
+  -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 Wait for the proxy to be ready:
@@ -44,11 +46,12 @@ Expected output:
 !!! note "No OpenAI key? Use mock mode."
     ```bash
     docker run -d \
-      -p 8080:8080 -p 3000:3000 -p 8081:8081 \
+      -p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 \
+      -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
       -e REVOC_UPSTREAM__MOCK_MODE=true \
       -e REVOC_AUTH__MODE=none \
       --name revoc \
-      ghcr.io/revoc-ai/revoc:latest
+      ghcr.io/revoc-ai/revoc:beta
     ```
     Mock mode returns `"Mock response. Governance pipeline ran."` for every request.
     The full detection and policy pipeline still runs — ideal for development.
@@ -154,59 +157,13 @@ The trace detail page shows:
 
 ---
 
-## Step 6 — Add a HIPAA Compliance Profile
+## Step 6 — Compliance Profiles (preview)
 
-Create `hipaa-policy.yaml`:
-
-```yaml
-name: hipaa-baseline
-version: "1.0"
-environment: production
-profile: hipaa
-
-rules:
-  - rule_id: pii_mrn_v1
-    action: remove
-    enforcement_mode: enforce
-
-  - rule_id: pii_dob_v1
-    action: remove
-    enforcement_mode: enforce
-
-  - rule_id: pii_ssn_v1
-    action: remove
-    enforcement_mode: enforce
-
-  - rule_id: pii_phone_v1
-    action: remove
-    enforcement_mode: enforce
-
-  - rule_id: token_quota_v1
-    action: block
-    parameters:
-      max_tokens_per_hour: 500000
-      enforcement_mode: enforce
-```
-
-Apply it via the admin API:
-
-```bash
-curl -s -X POST http://localhost:8081/internal/policies \
-  -H "Content-Type: application/yaml" \
-  -H "X-Admin-Key: dev-admin-key" \
-  --data-binary @hipaa-policy.yaml | python3 -m json.tool
-```
-
-Expected response:
-
-```json
-{
-  "status": "activated",
-  "policy_id": "01932abc-...",
-  "rules_loaded": 5,
-  "effective_at": "2026-01-15T10:30:00Z"
-}
-```
+The repository ships example HIPAA, PCI-DSS and GDPR policy bundles in
+`policies/examples/`. In this beta they can be stored, validated and activated
+through the admin API (`make up`, then `POST /api/v1/policies`), but the proxy's
+native engine always enforces the 30 default rules: a profile does not yet
+change runtime behaviour. See [Compliance Profiles](../policies/compliance-profiles.md).
 
 ---
 

@@ -27,7 +27,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="REVOC Admin API",
-        version="1.0.0",
+        version="0.1.0-beta.1",
         description=(
             "REVOC — Runtime Execution Validation & Observability Control. "
             "Admin plane for policy management, audit, and emergency controls."

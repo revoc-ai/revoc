@@ -173,6 +173,12 @@ fn default_port() -> u16 {
 fn default_dashboard_port() -> u16 {
     3000
 }
+fn default_internal_host() -> String {
+    "127.0.0.1".into()
+}
+fn default_internal_port() -> u16 {
+    8081
+}
 fn default_environment() -> String {
     "production".into()
 }
@@ -207,6 +213,18 @@ pub struct ServerConfig {
     #[serde(default = "default_dashboard_port")]
     pub dashboard_port: u16,
 
+    /// Bind address of the internal admin/emergency API (default `"127.0.0.1"`).
+    ///
+    /// Loopback-only by default. Container deployments that must reach it via
+    /// a port mapping set `"0.0.0.0"` explicitly and keep the port off any
+    /// public network.
+    #[serde(default = "default_internal_host")]
+    pub internal_host: String,
+
+    /// Internal admin/emergency API port (default `8081`).
+    #[serde(default = "default_internal_port")]
+    pub internal_port: u16,
+
     /// Deployment environment label (default `"production"`).
     #[serde(default = "default_environment")]
     pub environment: String,
@@ -238,6 +256,8 @@ impl Default for ServerConfig {
             host: default_host(),
             port: default_port(),
             dashboard_port: default_dashboard_port(),
+            internal_host: default_internal_host(),
+            internal_port: default_internal_port(),
             environment: default_environment(),
             max_request_body_bytes: default_max_request_body_bytes(),
             max_response_body_bytes: default_max_response_body_bytes(),
@@ -391,7 +411,7 @@ fn default_opa_timeout_ms() -> u64 {
     2_000
 }
 fn default_decision_cache_ttl_secs() -> u64 {
-    60
+    0
 }
 fn default_decision_cache_max_entries() -> usize {
     10_000
@@ -427,7 +447,12 @@ pub struct PolicyConfig {
     #[serde(default)]
     pub fail_open: bool,
 
-    /// Decision cache TTL in seconds (default `60`).
+    /// Decision cache TTL in seconds (default `0`, cache off).
+    ///
+    /// The cache key covers findings, caller and tool name but not tool
+    /// arguments or session state, so a non-zero TTL can reuse a decision for
+    /// a different call to the same tool. Enable only for workloads where that
+    /// is acceptable.
     #[serde(default = "default_decision_cache_ttl_secs")]
     pub decision_cache_ttl_secs: u64,
 
@@ -914,7 +939,7 @@ fn default_service_name() -> String {
     "revoc-proxy".into()
 }
 fn default_service_version() -> String {
-    "1.0.0".into()
+    env!("CARGO_PKG_VERSION").into()
 }
 fn default_sample_rate() -> f64 {
     1.0
@@ -986,9 +1011,6 @@ fn default_jwt_secret_env() -> String {
 fn default_api_keys_env() -> String {
     "REVOC_API_KEYS".into()
 }
-fn default_admin_key() -> String {
-    "dev-admin-key".into()
-}
 
 /// Proxy authentication configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1014,11 +1036,10 @@ pub struct AuthConfig {
     /// Admin key for the internal emergency/kill-switch API (port 8081),
     /// compared via constant-time equality against the `X-Admin-Key` header.
     ///
-    /// Defaults to `"dev-admin-key"` so the single-container smoke test
-    /// (`auth.mode = "none"`) and Tier-1 quickstart work out of the box.
-    /// Production deployments MUST override this — e.g. via
-    /// `REVOC_AUTH__ADMIN_KEY` — with a strong, randomly generated secret.
-    #[serde(default = "default_admin_key")]
+    /// Empty by default, which disables every internal admin endpoint until
+    /// a key is set (e.g. via `REVOC_AUTH__ADMIN_KEY` or `REVOC_ADMIN_KEY`).
+    /// Keys shorter than 16 characters are rejected.
+    #[serde(default)]
     pub admin_key: String,
 }
 
@@ -1029,7 +1050,7 @@ impl Default for AuthConfig {
             jwt_secret_env: default_jwt_secret_env(),
             api_keys_env: default_api_keys_env(),
             api_keys_file: String::new(),
-            admin_key: default_admin_key(),
+            admin_key: String::new(),
         }
     }
 }

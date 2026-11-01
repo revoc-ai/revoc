@@ -12,7 +12,7 @@ Solutions for the most common issues when getting started with REVOC.
 
 **Fix (development):** Disable auth:
 ```bash
-docker run ... -e REVOC_AUTH__MODE=none ghcr.io/revoc-ai/revoc:latest
+docker run ... -e REVOC_AUTH__MODE=none ghcr.io/revoc-ai/revoc:beta
 ```
 
 **Fix (production):** Set API keys:
@@ -20,7 +20,7 @@ docker run ... -e REVOC_AUTH__MODE=none ghcr.io/revoc-ai/revoc:latest
 # Generate a key first
 revoc-proxy generate-key --label myapp
 # Then pass the printed Key value:
-docker run ... -e REVOC_API_KEYS=revoc_k_yourkeyhere ghcr.io/revoc-ai/revoc:latest
+docker run ... -e REVOC_API_KEYS=revoc_k_yourkeyhere ghcr.io/revoc-ai/revoc:beta
 ```
 
 Your callers add `Authorization: Bearer revoc_k_yourkeyhere` to every request.

@@ -24,14 +24,17 @@ services:
       - "8080:8080"
       - "3000:3000"
       - "9090:9090"
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
+      # Container-internal bind so the loopback-only host mapping above works.
+      REVOC_SERVER__INTERNAL_HOST: 0.0.0.0
       REVOC_AUTH__MODE: none
       REVOC_UPSTREAM__MOCK_MODE: "true"
       REVOC_LOG_FORMAT: pretty
       REVOC_POLICY__ENGINE: native
       REVOC_STORAGE__BACKEND: sqlite
       REVOC_SERVER__ENVIRONMENT: development
+      REVOC_ADMIN_KEY: dev-admin-key-local-only
     volumes:
       # Bind-mount source so `cargo watch` style rebuilds pick up changes
       # without rebuilding the image. The compiled binary still runs from

@@ -4,7 +4,12 @@
 
 REVOC is an out-of-band proxy that sits between your application and any LLM or MCP server.
 Point `base_url` at `http://revoc:8080` and instantly get 30 active governance rules,
-a live dashboard at `:3000`, and a full tamper-proof audit log.
+a live dashboard at `:3000`, and an audit record of every decision.
+
+!!! warning "Beta"
+    REVOC 0.1 is a beta for evaluation, development and shadow-mode trials.
+    See the [project status](https://github.com/revoc-ai/revoc#project-status)
+    for known gaps before putting it in front of production traffic.
 
 ---
 
@@ -16,11 +21,13 @@ a live dashboard at `:3000`, and a full tamper-proof audit log.
 docker run -d \
   -p 8080:8080 \
   -p 3000:3000 \
-  -p 8081:8081 \
+  -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 \
+  -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -e REVOC_AUTH__MODE=none \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 !!! note "Authentication in production"

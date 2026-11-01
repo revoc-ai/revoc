@@ -99,57 +99,61 @@ struct BundleRuntime {
 /// OPA WASM policy engine. Requires a compiled bundle:
 /// `opa build -t wasm policies/default/ -o policy.wasm`
 ///
-/// When the bundle is absent or fails to load, falls back to
-/// [`NativePolicyEngine`]. Configure via `policy.wasm_bundle_path` in
-/// `revoc.toml`.
+/// A bundle that is missing or fails to load is a startup error unless
+/// `policy.fail_open = true`, in which case the native engine is used and a
+/// warning is logged. Configure via `policy.wasm_bundle_path` in `revoc.toml`.
 pub struct WasmPolicyEngine {
     bundle: Option<LoadedBundle>,
     fallback: NativePolicyEngine,
 }
 
 impl WasmPolicyEngine {
-    /// Attempt to load and instantiate the WASM bundle from `bundle_path`.
+    /// Load and instantiate the WASM bundle from `bundle_path`.
     ///
-    /// If loading fails for any reason (missing file, compile error,
-    /// instantiation error, missing ABI export), logs a warning and falls
-    /// back to the native engine — the proxy never refuses to start. Once a
-    /// bundle loads successfully, [`Self::evaluate`] always runs it for real.
+    /// # Errors
+    /// Returns [`RevocError::Configuration`] when `bundle_path` is empty or the
+    /// bundle cannot be loaded (missing file, compile or instantiation error,
+    /// missing ABI export) and `fail_open` is `false`. Selecting the WASM engine
+    /// and silently running a different policy would hide a misconfiguration.
     pub fn new(
         bundle_path: &str,
         cache: Arc<DecisionCache>,
         enforcement_mode: EnforcementMode,
-    ) -> Self {
+        fail_open: bool,
+    ) -> Result<Self, RevocError> {
         let fallback = NativePolicyEngine::new(cache, enforcement_mode);
 
-        if bundle_path.is_empty() {
-            return Self {
-                bundle: None,
-                fallback,
-            };
-        }
+        let loaded = if bundle_path.is_empty() {
+            Err(RevocError::Configuration(
+                "policy.engine = \"wasm\" requires policy.wasm_bundle_path".into(),
+            ))
+        } else {
+            Self::load_bundle(bundle_path)
+        };
 
-        match Self::load_bundle(bundle_path) {
+        match loaded {
             Ok(bundle) => {
                 tracing::info!(
                     bundle_path,
                     "OPA WASM bundle loaded — evaluating via wasmtime"
                 );
-                Self {
+                Ok(Self {
                     bundle: Some(bundle),
                     fallback,
-                }
+                })
             }
-            Err(e) => {
+            Err(e) if fail_open => {
                 warn!(
                     bundle_path,
                     error = %e,
-                    "Failed to load OPA WASM bundle — falling back to native policy engine"
+                    "Failed to load OPA WASM bundle — fail_open=true, using native policy engine"
                 );
-                Self {
+                Ok(Self {
                     bundle: None,
                     fallback,
-                }
+                })
             }
+            Err(e) => Err(e),
         }
     }
 
@@ -208,7 +212,7 @@ impl WasmPolicyEngine {
     ///
     /// Returns `Err` if any export is missing or has an unexpected type —
     /// this is what makes a malformed/non-OPA WASM module a genuine load
-    /// failure (correctly triggering fallback) rather than a silent no-op.
+    /// failure (refusing to start) rather than a silent no-op.
     ///
     /// Each `get_typed_func` call is performed separately to avoid multiple
     /// simultaneous mutable borrows of `store` that Rust closures would incur.
@@ -610,6 +614,38 @@ mod tests {
     fn decode_decision_requires_result_field() {
         let err = decode_decision(&serde_json::json!([{"no_result_here": true}])).unwrap_err();
         assert!(matches!(err, RevocError::PolicyEvaluation(_)));
+    }
+
+    fn cache() -> Arc<DecisionCache> {
+        Arc::new(DecisionCache::new(std::time::Duration::from_secs(1), 10))
+    }
+
+    #[test]
+    fn missing_bundle_refuses_to_start_when_fail_closed() {
+        let res = WasmPolicyEngine::new(
+            "/no/such/bundle.wasm",
+            cache(),
+            EnforcementMode::Enforce,
+            false,
+        );
+        assert!(matches!(res, Err(RevocError::Configuration(_))));
+    }
+
+    #[test]
+    fn empty_bundle_path_refuses_to_start_when_fail_closed() {
+        let res = WasmPolicyEngine::new("", cache(), EnforcementMode::Enforce, false);
+        assert!(matches!(res, Err(RevocError::Configuration(_))));
+    }
+
+    #[test]
+    fn missing_bundle_falls_back_only_when_fail_open() {
+        let res = WasmPolicyEngine::new(
+            "/no/such/bundle.wasm",
+            cache(),
+            EnforcementMode::Enforce,
+            true,
+        );
+        assert!(res.is_ok());
     }
 
     #[test]

@@ -21,7 +21,7 @@ impl UpstreamClient {
             .timeout(Duration::from_millis(cfg.upstream.timeout_ms))
             .connect_timeout(Duration::from_millis(cfg.upstream.connect_timeout_ms))
             .pool_max_idle_per_host(cfg.upstream.max_idle_connections_per_host)
-            .user_agent("revoc-proxy/1.0.0")
+            .user_agent(concat!("revoc-proxy/", env!("CARGO_PKG_VERSION")))
             .use_rustls_tls()
             .https_only(false) // Allow HTTP for mock/dev mode
             .build()

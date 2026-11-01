@@ -13,17 +13,17 @@ OTel export, horizontal pod autoscaling, and multi-instance kill-switch propagat
 ## Installation
 
 ```bash
-helm repo add revoc https://charts.revoc.io
-helm repo update
+git clone https://github.com/revoc-ai/revoc && cd revoc
+helm dependency build helm/revoc
 
-helm install revoc revoc/revoc \
+helm install revoc helm/revoc \
   --namespace revoc \
   --create-namespace \
-  --set upstream.openai.apiKey=$OPENAI_API_KEY \
-  --set global.environment=production \
-  --set postgres.external.url=$DATABASE_URL \
-  --set redis.external.url=$REDIS_URL
+  --set secrets.openaiApiKey=$OPENAI_API_KEY \
+  --set secrets.adminKey=$(openssl rand -hex 24)
 ```
+
+A published chart repository is planned; install from the repository for now.
 
 ## values.yaml Highlights
 
@@ -32,7 +32,7 @@ global:
   environment: production
   image:
     repository: ghcr.io/revoc-ai/revoc
-    tag: "1.0.0"
+    tag: "0.1.0-beta.1"
     pullPolicy: IfNotPresent
 
 replicaCount: 3

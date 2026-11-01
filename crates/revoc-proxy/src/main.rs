@@ -24,7 +24,11 @@ mod tests;
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
-#[command(name = "revoc-proxy", about = "REVOC AI Governance Proxy v1.0.0")]
+#[command(
+    name = "revoc-proxy",
+    version,
+    about = "REVOC AI Governance Proxy (beta)"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -79,7 +83,7 @@ enum EmergencyCommand {
         scope: String,
         #[arg(long)]
         reason: String,
-        #[arg(long)]
+        #[arg(long, env = "REVOC_ADMIN_KEY")]
         admin_key: String,
         #[arg(long)]
         target: Option<String>,
@@ -88,13 +92,16 @@ enum EmergencyCommand {
     Deactivate {
         #[arg(long)]
         scope: String,
-        #[arg(long)]
+        #[arg(long, env = "REVOC_ADMIN_KEY")]
         admin_key: String,
         #[arg(long)]
         target: Option<String>,
     },
     /// Show current kill-switch status.
-    Status,
+    Status {
+        #[arg(long, env = "REVOC_ADMIN_KEY")]
+        admin_key: String,
+    },
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -119,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Version => {
-            println!("revoc-proxy 1.0.0");
+            println!("revoc-proxy {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Command::Benchmark { quick } => {
@@ -149,7 +156,7 @@ async fn serve(config_path: Option<String>) -> anyhow::Result<()> {
   ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║   ██║██║
   ██║  ██║███████╗ ╚████╔╝ ╚██████╔╝╚██████╗
   ╚═╝  ╚═╝╚══════╝  ╚═══╝   ╚═════╝  ╚═════╝
-  Runtime Execution Validation & Observability Control v1.0.0
+  Runtime Execution Validation & Observability Control (beta)
   Apache 2.0 — https://revoc.io
 "
     );
@@ -195,13 +202,13 @@ async fn serve(config_path: Option<String>) -> anyhow::Result<()> {
     let routers = app::build_routers(&state);
 
     let main_addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
-    // Bind on all interfaces — the internal admin/emergency API is protected
-    // by X-Admin-Key header authentication (constant-time comparison), so
-    // exposing it beyond loopback is safe. A 127.0.0.1-only bind would make
-    // it unreachable from outside its own network namespace in containerized
-    // deployments (Docker/Kubernetes), where it must still be reachable via
-    // the container's port mapping while remaining off the public internet.
-    let internal_addr: SocketAddr = "0.0.0.0:8081".parse()?;
+    // Loopback by default (`server.internal_host`); containers that need the
+    // admin API reachable through a port mapping opt in to "0.0.0.0".
+    let internal_addr: SocketAddr =
+        format!("{}:{}", cfg.server.internal_host, cfg.server.internal_port).parse()?;
+    if cfg.auth.admin_key.is_empty() && std::env::var("REVOC_ADMIN_KEY").is_err() {
+        warn!("No admin key configured — internal admin API will reject every request");
+    }
 
     info!(addr = %main_addr, "Starting proxy (main)");
     info!(addr = %internal_addr, "Starting internal admin server");
@@ -433,7 +440,9 @@ fn benchmark(quick: bool) {
 }
 
 async fn emergency_cmd(cmd: EmergencyCommand) -> anyhow::Result<()> {
-    let internal_url = "http://localhost:8081/internal/emergency/kill-switch";
+    let internal_url =
+        std::env::var("REVOC_INTERNAL_URL").unwrap_or_else(|_| "http://127.0.0.1:8081".into());
+    let internal_url = format!("{internal_url}/internal/emergency/kill-switch");
 
     match cmd {
         EmergencyCommand::Activate {
@@ -448,7 +457,7 @@ async fn emergency_cmd(cmd: EmergencyCommand) -> anyhow::Result<()> {
             });
             let resp = reqwest::Client::new()
                 .post(format!("{internal_url}/activate"))
-                .header("Authorization", format!("Bearer {admin_key}"))
+                .header("X-Admin-Key", admin_key)
                 .json(&body)
                 .send()
                 .await?;
@@ -462,15 +471,16 @@ async fn emergency_cmd(cmd: EmergencyCommand) -> anyhow::Result<()> {
             let body = serde_json::json!({"scope": scope, "target": target});
             let resp = reqwest::Client::new()
                 .post(format!("{internal_url}/deactivate"))
-                .header("Authorization", format!("Bearer {admin_key}"))
+                .header("X-Admin-Key", admin_key)
                 .json(&body)
                 .send()
                 .await?;
             println!("{}", resp.text().await?);
         }
-        EmergencyCommand::Status => {
+        EmergencyCommand::Status { admin_key } => {
             let resp = reqwest::Client::new()
                 .get(format!("{internal_url}/status"))
+                .header("X-Admin-Key", admin_key)
                 .send()
                 .await?;
             println!("{}", resp.text().await?);

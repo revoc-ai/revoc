@@ -113,7 +113,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Extract version from tag
         id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # Pre-releases (v0.1.0-beta.1) never move the :latest tags.
+          if [[ "$v" == *-* ]]; then
+            echo "latest_tag=${{ env.IMAGE_PROXY }}:beta" >> "$GITHUB_OUTPUT"
+            echo "latest_ml_tag=${{ env.IMAGE_PROXY }}:beta-ml" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest_tag=${{ env.IMAGE_PROXY }}:latest" >> "$GITHUB_OUTPUT"
+            echo "latest_ml_tag=${{ env.IMAGE_PROXY }}:latest-ml" >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -134,7 +144,7 @@ jobs:
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
           tags: |
-            ${{ env.IMAGE_PROXY }}:latest
+            ${{ steps.meta.outputs.latest_tag }}
             ${{ env.IMAGE_PROXY }}:${{ steps.meta.outputs.version }}
       - name: Build and push ML-enabled image
         uses: docker/build-push-action@v6
@@ -149,7 +159,7 @@ jobs:
             BUILD_DATE=${{ github.event.repository.updated_at }}
             ML_ENABLED=true
           tags: |
-            ${{ env.IMAGE_PROXY }}:latest-ml
+            ${{ steps.meta.outputs.latest_ml_tag }}
             ${{ env.IMAGE_PROXY }}:${{ steps.meta.outputs.version }}-ml
 
   # ── Package Helm chart ────────────────────────────────────────────────────────
@@ -220,7 +230,12 @@ jobs:
           npm ci
           npm run build
           npm test
-          npm publish --access public --provenance
+          # Pre-release versions publish under the "beta" dist-tag, not "latest".
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            npm publish --access public --provenance --tag beta
+          else
+            npm publish --access public --provenance
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -242,6 +257,7 @@ jobs:
             dist/*.tgz
           body: ${{ needs.changelog.outputs.notes }}
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
 
 # Documentation is deployed to revoc.io by .github/workflows/docs.yml

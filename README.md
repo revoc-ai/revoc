@@ -1,16 +1,19 @@
 # REVOC
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0--beta.1-orange.svg)](CHANGELOG.md)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Rust 1.80](https://img.shields.io/badge/rust-1.80.0-orange.svg)](rust-toolchain.toml)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io%2Frevoc--ai%2Frevoc-blue)](https://ghcr.io/revoc-ai/revoc)
-[![P95 Overhead](https://img.shields.io/badge/P95%20overhead-%3C10ms-brightgreen)](benches/)
 [![Calls Home](https://img.shields.io/badge/calls%20home-never-brightgreen)](docs/docs/security/telemetry-policy.md)
-[![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/status-beta-orange.svg)](#project-status)
 
 **Runtime Execution Validation & Observability Control**
 
 Govern every AI call your application makes. Zero code changes.
+
+> **Beta — not yet for production traffic.** REVOC 0.1 is ready for evaluation,
+> development and shadow-mode trials. See [Project status](#project-status) for
+> what is solid, what is partial, and what is still missing.
 
 ---
 
@@ -20,7 +23,7 @@ Govern every AI call your application makes. Zero code changes.
 
 ```bash
 # One-liner:
-docker run -d -p 8080:8080 -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY --name revoc ghcr.io/revoc-ai/revoc:latest
+docker run -d -p 8080:8080 -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY --name revoc ghcr.io/revoc-ai/revoc:beta
 ```
 
 **Step 2 — Change one line (or zero lines):**
@@ -84,23 +87,25 @@ export OPENAI_BASE_URL=http://localhost:8080
 
 ## Feature Table
 
+✅ implemented and tested · ⚠️ partial or experimental · ❌ not yet
+
 | Feature | Status | Detail |
 |---|---|---|
-| PII detection (11 entity types) | ✅ | SSN, email, phone, credit card, IBAN, passport, MRN, DOB, IP, driver license, bank account |
+| PII detection (11 entity types) | ✅ | Regex + validators (Luhn, IBAN, ABA). Pattern-based: expect misses and false positives on free text |
 | Secret blocking (10 types) | ✅ | AWS keys, GitHub tokens, OpenAI/Anthropic keys, private keys, JWTs, passwords |
-| Prompt injection detection | ✅ | 15+ injection and jailbreak phrase patterns |
-| SQL mutation blocking | ✅ | DROP, TRUNCATE, ALTER TABLE, DELETE without WHERE |
-| SSRF protection | ✅ | Internal IP ranges blocked in HTTP tool args |
-| Path traversal blocking | ✅ | `../` sequences in file tool args |
+| Prompt injection detection | ⚠️ | Phrase patterns only; paraphrased or translated injections are not caught |
+| SQL mutation blocking | ✅ | DROP, TRUNCATE, ALTER TABLE, DELETE without WHERE (regex, not a SQL parser) |
+| SSRF / path traversal | ⚠️ | Literal internal IPs and `../`; encoded or alternate IP forms are not canonicalised yet |
 | Unicode evasion normalization | ✅ | NFKC + zero-width + RTLO/BIDI removal before every detection pass |
-| Emergency kill-switch (50ms) | ✅ | Global, per-org, per-caller; Redis propagation to all instances |
+| Fail-closed governance | ✅ | Detection timeouts, detector errors, policy errors and redaction errors block the request |
+| Emergency kill-switch | ⚠️ | Global, per-org, per-caller. State is in memory per instance; Redis pub/sub fan-out is best-effort and not persisted |
 | Governance depth guard | ✅ | Max depth 10; prevents infinite agent recursion |
 | Tool manifest analysis | ✅ | Scans MCP `tools/list` for dangerous parameter names and suspicious descriptions |
-| Bidirectional MCP governance | ✅ | Tool arguments AND tool results inspected |
-| Shadow mode | ✅ | Observe without blocking; per-deployment or per-caller |
-| HIPAA / PCI-DSS / GDPR profiles | ✅ | Pre-built compliance policy bundles |
-| P95 proxy overhead | ✅ | < 10ms measured (criterion benchmarks) |
-| Streaming governance | ✅ | Sliding window scanner + tool call accumulator |
+| Bidirectional MCP governance | ✅ | Tool arguments and tool results inspected (JSON-RPC over HTTP POST) |
+| Shadow mode | ✅ | Observe without blocking |
+| Streaming governance | ⚠️ | Sliding-window scanner and tool-call accumulator; experimental — use `stream.buffer_output = true` for strict inspection |
+| Compliance profiles (HIPAA / PCI-DSS / GDPR) | ⚠️ | Example policy bundles only. REVOC is not certified for, and does not by itself make you compliant with, any framework |
+| Postgres audit store / Redis shared state | ❌ | Audit events are written to SQLite today |
 | Calls home / telemetry | ❌ | REVOC makes zero outbound connections to revoc.io |
 
 ---
@@ -176,17 +181,21 @@ X-Revoc-Timing: detection=2ms,policy=0ms,redaction=1ms,upstream=312ms,total=315m
 
 ## Performance
 
-All benchmarks run with criterion on an `i7-13700K` at 5GHz, single container, no upstream.
+Targets (SPEC.md §19), checked with criterion micro-benchmarks in `benches/`:
 
-| Benchmark | Result | Target |
-|---|---|---|
-| P95 proxy overhead (proxy-only) | 4.2ms | < 10ms ✅ |
-| Regex detection — 4KB, no PII | 187K req/s | > 100K/s ✅ |
-| Regex detection — 4KB, 3 PII findings | 73K req/s | > 50K/s ✅ |
-| Full pipeline (regex + policy + redaction) | 58K req/s | > 40K/s ✅ |
-| Policy cache hit | 4.1M ops/s | > 1M/s ✅ |
-| Normalization overhead | 0.12ms | < 0.5ms ✅ |
-| Manifest analysis (10 tools) | 0.31ms | < 1ms ✅ |
+| Benchmark | Target |
+|---|---|
+| P95 proxy overhead (proxy-only) | < 10ms |
+| Regex detection — 4KB, no PII | > 100K req/s |
+| Regex detection — 4KB, 3 PII findings | > 50K req/s |
+| Full pipeline (regex + policy + redaction) | > 40K req/s |
+| Policy cache hit | > 1M ops/s |
+| Normalization overhead | < 0.5ms |
+| Manifest analysis (10 tools) | < 1ms |
+
+Run them on your own hardware with `cargo bench -p revoc-benches`. These are
+in-process numbers; end-to-end HTTP latency (P50/P95/P99 under load) has not
+been published yet.
 
 ---
 
@@ -196,33 +205,38 @@ All benchmarks run with criterion on an `i7-13700K` at 5GHz, single container, n
 
 ```bash
 docker run -d \
-  -p 8080:8080 -p 3000:3000 -p 8081:8081 \
+  -p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
-SQLite audit log stored in the container. Suitable for development and single-node production.
+SQLite audit log at `/data/revoc-audit.db` (mount a volume on `/data` to keep it). For development and evaluation.
 
 ### Tier 2 — Team (docker compose with Postgres + Redis)
 
 ```bash
-curl -O https://raw.githubusercontent.com/revoc-ai/revoc/main/docker-compose.yml
-OPENAI_API_KEY=$OPENAI_API_KEY docker compose up -d
+git clone https://github.com/revoc-ai/revoc && cd revoc
+cp .env.example .env    # set OPENAI_API_KEY and a strong REVOC_ADMIN_KEY
+make up
 ```
 
-Adds persistent Postgres audit storage and Redis for kill-switch propagation and caching.
+Adds the admin API with Postgres, and Redis for kill-switch fan-out. The proxy's
+own audit log is still SQLite in this release.
 
-### Tier 3 — Enterprise (Helm)
+### Tier 3 — Kubernetes (Helm)
 
 ```bash
-helm repo add revoc https://charts.revoc.io
-helm install revoc revoc/revoc \
-  --set upstream.openai.apiKey=$OPENAI_API_KEY \
-  --set global.environment=production
+git clone https://github.com/revoc-ai/revoc && cd revoc
+helm dependency build helm/revoc
+helm install revoc helm/revoc \
+  --set secrets.openaiApiKey=$OPENAI_API_KEY \
+  --set secrets.adminKey=$(openssl rand -hex 24)
 ```
 
-HA deployment with OPA sidecar, OTel export, autoscaling, and multi-instance kill-switch.
+Multiple replicas with autoscaling and OTel export. The chart is beta: an OPA
+sidecar and a published chart repository are not included yet.
 
 ---
 
@@ -260,6 +274,28 @@ Full documentation: [https://revoc.io/docs](https://revoc.io/docs)
 - [Unicode Normalization](docs/docs/concepts/normalization.md)
 - [Governance Depth](docs/docs/concepts/governance-depth.md)
 - [Telemetry Policy](docs/docs/security/telemetry-policy.md)
+
+---
+
+## Project status
+
+REVOC 0.1 is a **beta**. It is ready for evaluation, development, and
+shadow-mode trials on real traffic. It has not had an external security review
+and is not yet recommended as the only control in front of production systems.
+
+Known gaps being worked on before 1.0:
+
+- Streaming governance scans assembled SSE frames with a sliding window; a
+  rebuilt per-choice parser with hold-back and in-stream redaction is planned.
+- The policy decision cache key does not yet include tool arguments or session
+  state; set `policy.decision_cache_ttl_secs = 0` for strict evaluation.
+- Kill-switch state is per instance; there is no persisted, reconciled state.
+- All API keys map to a single org; there is no tenant-scoped key registry yet.
+- Audit storage is SQLite only on the proxy; Postgres is used by the admin API.
+- Detection is pattern-based; there is no labelled evaluation corpus or
+  published precision/recall yet.
+
+Security issues: please use [private vulnerability reporting](SECURITY.md).
 
 ---
 

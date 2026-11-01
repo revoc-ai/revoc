@@ -176,7 +176,9 @@ secrets:
   # Set create=false and provide existingSecret to bring your own secret.
   create: true
   existingSecret: ""
-  adminKey: "change-me-admin-key"
+  # Admin key for the internal API (port 8081), at least 16 characters.
+  # Empty disables the admin API (kill-switch, reload) until you set it.
+  adminKey: ""
   apiKeys: "change-me-api-key"
   jwtSecret: ""
   openaiApiKey: ""

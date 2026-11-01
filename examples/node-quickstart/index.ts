@@ -9,7 +9,7 @@
  *   docker run -d -p 8080:8080 -p 3000:3000 -p 8081:8081 \
  *     -e REVOC_UPSTREAM__MOCK_MODE=true \
  *     -e REVOC_AUTH__MODE=none \
- *     --name revoc ghcr.io/revoc-ai/revoc:latest
+ *     --name revoc ghcr.io/revoc-ai/revoc:beta
  *
  *   npm install
  *   npm start
@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     console.error("  docker run -d -p 8080:8080 -p 3000:3000 -p 8081:8081 \\");
     console.error("    -e REVOC_UPSTREAM__MOCK_MODE=true \\");
     console.error("    -e REVOC_AUTH__MODE=none \\");
-    console.error("    --name revoc ghcr.io/revoc-ai/revoc:latest");
+    console.error("    --name revoc ghcr.io/revoc-ai/revoc:beta");
     process.exit(1);
   }
 

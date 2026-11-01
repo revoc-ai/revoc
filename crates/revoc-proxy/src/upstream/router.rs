@@ -72,7 +72,7 @@ impl UpstreamRouter {
     /// Applies:
     /// - SSRF protection via [`validate_upstream_url`]
     /// - Format translation (Anthropic messages API)
-    /// - `User-Agent: revoc-proxy/1.0.0`
+    /// - `User-Agent: revoc-proxy/<version>`
     /// - `X-Revoc-Depth` on the outgoing request (D9, Step 14)
     pub fn build_upstream_request(
         &self,
@@ -90,9 +90,10 @@ impl UpstreamRouter {
 
         let api_key = provider.api_key().unwrap_or_default();
 
-        let mut builder = client
-            .request(method, &url)
-            .header("User-Agent", "revoc-proxy/1.0.0");
+        let mut builder = client.request(method, &url).header(
+            "User-Agent",
+            concat!("revoc-proxy/", env!("CARGO_PKG_VERSION")),
+        );
 
         // Provider-specific auth and format
         builder = match provider.format.as_str() {

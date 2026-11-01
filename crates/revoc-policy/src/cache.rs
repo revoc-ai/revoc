@@ -53,7 +53,11 @@ impl DecisionCache {
     /// Store a decision under `key`.
     ///
     /// When `max_entries` is reached, the oldest entry is evicted before inserting.
+    /// A zero TTL disables the cache: nothing is stored.
     pub fn set(&self, key: &str, decision: PolicyDecision) {
+        if self.ttl.is_zero() {
+            return;
+        }
         if self.store.len() >= self.max_entries {
             // Evict the entry with the oldest timestamp
             if let Some(oldest_key) = self

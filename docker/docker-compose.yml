@@ -13,7 +13,7 @@ name: revoc
 
 services:
   revoc-proxy:
-    image: ${IMAGE_PROXY:-ghcr.io/revoc-ai/revoc:latest}
+    image: ${IMAGE_PROXY:-ghcr.io/revoc-ai/revoc:beta}
     build:
       context: ..
       dockerfile: crates/revoc-proxy/Dockerfile
@@ -23,10 +23,12 @@ services:
       - "8080:8080"   # AI traffic (OpenAI/Anthropic-compatible proxy)
       - "3000:3000"   # Dashboard SPA + SSE live feed
       - "9090:9090"   # Prometheus metrics
-      - "8081:8081"   # Internal emergency/admin API — DO NOT expose publicly
+      - "127.0.0.1:8081:8081"   # Internal emergency/admin API — DO NOT expose publicly
     env_file:
       - ../.env
     environment:
+      # Container-internal bind so the loopback-only host mapping above works.
+      REVOC_SERVER__INTERNAL_HOST: 0.0.0.0
       REVOC_STORAGE__BACKEND: postgres
       DATABASE_URL: postgres://revoc:revoc@postgres:5432/revoc
       REDIS_URL: redis://redis:6379

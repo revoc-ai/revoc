@@ -1240,7 +1240,7 @@ if ! curl -sf http://localhost:8080/health > /dev/null 2>&1; then
   docker run -d --name revoc-e2e-load -p 8080:8080 -p 3000:3000 -p 8081:8081 \
     -e REVOC_AUTH__MODE=none -e REVOC_UPSTREAM__MOCK_MODE=true \
     -e REVOC_DASHBOARD__AUTH_MODE=none \
-    ghcr.io/revoc-ai/revoc:latest
+    ghcr.io/revoc-ai/revoc:beta
   sleep 10
   _LOAD_CONTAINER_STARTED=1
 fi
@@ -1265,14 +1265,14 @@ echo "=== VS-21b: E2E Governance Journey Tests ==="
 # Stop revoc-e2e-load first (it holds ports 8080/3000/8081 if VS-21 started it).
 docker rm -f revoc-e2e revoc-e2e-load 2>/dev/null || true
 _LOAD_CONTAINER_STARTED=0  # revoc-e2e-load is gone; nothing to clean up there
-if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
+if docker pull ghcr.io/revoc-ai/revoc:beta 2>/dev/null; then
   docker run -d --name revoc-e2e \
     -p 8080:8080 -p 3000:3000 -p 8081:8081 \
     -e REVOC_AUTH__MODE=none \
     -e REVOC_UPSTREAM__MOCK_MODE=true \
     -e REVOC_DASHBOARD__AUTH_MODE=none \
     -e REVOC_POLICY__DECISION_CACHE_TTL_SECS=0 \
-    ghcr.io/revoc-ai/revoc:latest
+    ghcr.io/revoc-ai/revoc:beta
   _E2E_CONTAINER_STARTED=1
 
   # Wait for readiness
@@ -1297,7 +1297,7 @@ if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
   docker rm -f revoc-e2e 2>/dev/null || true
   _E2E_CONTAINER_STARTED=0
 else
-  echo "⚠️  VS-21b skipped — ghcr.io/revoc-ai/revoc:latest not accessible (registry pull denied)"
+  echo "⚠️  VS-21b skipped — ghcr.io/revoc-ai/revoc:beta not accessible (registry pull denied)"
 fi
 
 # ── VS-21c · Locust Load Test ─────────────────────────────────────────────────
@@ -1315,13 +1315,13 @@ echo "=== VS-21c: Locust Load Test ==="
 # Stop revoc-e2e first (it holds ports 8080/3000/8081 from VS-21b).
 docker rm -f revoc-locust revoc-e2e 2>/dev/null || true
 _E2E_CONTAINER_STARTED=0  # revoc-e2e is gone; nothing to clean up there
-if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
+if docker pull ghcr.io/revoc-ai/revoc:beta 2>/dev/null; then
   docker run -d --name revoc-locust \
     -p 8080:8080 -p 3000:3000 -p 8081:8081 \
     -e REVOC_AUTH__MODE=none \
     -e REVOC_UPSTREAM__MOCK_MODE=true \
     -e REVOC_DASHBOARD__AUTH_MODE=none \
-    ghcr.io/revoc-ai/revoc:latest
+    ghcr.io/revoc-ai/revoc:beta
   _LOCUST_CONTAINER_STARTED=1
 
   echo "Waiting for revoc-locust to become healthy..."
@@ -1359,7 +1359,7 @@ if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
   docker rm -f revoc-locust 2>/dev/null || true
   _LOCUST_CONTAINER_STARTED=0
 else
-  echo "⚠️  VS-21c skipped — ghcr.io/revoc-ai/revoc:latest not accessible (registry pull denied)"
+  echo "⚠️  VS-21c skipped — ghcr.io/revoc-ai/revoc:beta not accessible (registry pull denied)"
 fi
 
 # ── VS-22 · Phase 20 — MkDocs Site & Documentation ───────────────────────────

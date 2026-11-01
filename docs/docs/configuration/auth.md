@@ -136,9 +136,11 @@ export REVOC_ADMIN_KEY=your-admin-key-here
 Or pass it directly via Docker:
 
 ```bash
-docker run ... -e REVOC_ADMIN_KEY=your-secure-admin-key ghcr.io/revoc-ai/revoc:latest
+docker run ... -e REVOC_ADMIN_KEY=your-secure-admin-key ghcr.io/revoc-ai/revoc:beta
 ```
 
 !!! warning
-    If `REVOC_ADMIN_KEY` is not set, the admin API uses `dev-admin-key` as the default.
-    Always set a strong key in production.
+    If no admin key is set (`REVOC_ADMIN_KEY` or `auth.admin_key`), or it is
+    shorter than 16 characters, every internal admin endpoint returns 401.
+    Generate one with `openssl rand -hex 24`. The internal API binds to
+    `127.0.0.1` unless `server.internal_host` is set.

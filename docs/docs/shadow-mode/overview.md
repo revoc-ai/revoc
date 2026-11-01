@@ -36,7 +36,7 @@ docker run -d \
   -e REVOC_POLICY__ENFORCEMENT_MODE=shadow \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   --name revoc-shadow \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 ### Per-caller (specific API keys in shadow mode)

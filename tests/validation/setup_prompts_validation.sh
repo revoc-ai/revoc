@@ -244,17 +244,17 @@ deactivate
 
 # ── Phase 18b: E2E governance journey tests ───────────────────────────────────
 # Full black-box test against a live single-container stack (mock_mode=true).
-# Requires ghcr.io/revoc-ai/revoc:latest to be published. Skipped if unavailable.
+# Requires ghcr.io/revoc-ai/revoc:beta to be published. Skipped if unavailable.
 # _cleanup_phase_containers EXIT trap (registered at script top) removes revoc-e2e.
 docker rm -f revoc-e2e revoc-locust 2>/dev/null || true
-if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
+if docker pull ghcr.io/revoc-ai/revoc:beta 2>/dev/null; then
   docker run -d --name revoc-e2e \
     -p 8080:8080 -p 3000:3000 -p 8081:8081 \
     -e REVOC_AUTH__MODE=none \
     -e REVOC_UPSTREAM__MOCK_MODE=true \
     -e REVOC_DASHBOARD__AUTH_MODE=none \
     -e REVOC_POLICY__DECISION_CACHE_TTL_SECS=0 \
-    ghcr.io/revoc-ai/revoc:latest
+    ghcr.io/revoc-ai/revoc:beta
   _E2E_CONTAINER_STARTED=1
 
   # Wait for readiness (up to 60s)
@@ -272,22 +272,22 @@ if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
   docker rm -f revoc-e2e 2>/dev/null || true
   _E2E_CONTAINER_STARTED=0
 else
-  echo "⚠️  ghcr.io/revoc-ai/revoc:latest unavailable — Phase 18b E2E tests skipped (image not yet published)"
+  echo "⚠️  ghcr.io/revoc-ai/revoc:beta unavailable — Phase 18b E2E tests skipped (image not yet published)"
 fi
 
 # ── Phase 18c: Locust load test ───────────────────────────────────────────────
 # End-to-end throughput signal. Proxy must be running with mock_mode=true.
-# Requires ghcr.io/revoc-ai/revoc:latest to be published. Skipped if unavailable.
+# Requires ghcr.io/revoc-ai/revoc:beta to be published. Skipped if unavailable.
 # _cleanup_phase_containers EXIT trap (registered at script top) removes revoc-locust.
 # revoc-e2e was removed above so ports 8080/3000/8081 are free.
 docker rm -f revoc-locust 2>/dev/null || true
-if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
+if docker pull ghcr.io/revoc-ai/revoc:beta 2>/dev/null; then
   docker run -d --name revoc-locust \
     -p 8080:8080 -p 3000:3000 -p 8081:8081 \
     -e REVOC_AUTH__MODE=none \
     -e REVOC_UPSTREAM__MOCK_MODE=true \
     -e REVOC_DASHBOARD__AUTH_MODE=none \
-    ghcr.io/revoc-ai/revoc:latest
+    ghcr.io/revoc-ai/revoc:beta
   _LOCUST_CONTAINER_STARTED=1
 
   for _i in $(seq 1 30); do
@@ -310,7 +310,7 @@ if docker pull ghcr.io/revoc-ai/revoc:latest 2>/dev/null; then
   docker rm -f revoc-locust 2>/dev/null || true
   _LOCUST_CONTAINER_STARTED=0
 else
-  echo "⚠️  ghcr.io/revoc-ai/revoc:latest unavailable — Phase 18c Locust tests skipped (image not yet published)"
+  echo "⚠️  ghcr.io/revoc-ai/revoc:beta unavailable — Phase 18c Locust tests skipped (image not yet published)"
 fi
 
 # ── Phase 19: Benchmarks + Fuzz ──────────────────────────────────────────────
@@ -338,7 +338,7 @@ docker run -d --name revoc-slo \
   -p 8080:8080 -p 3000:3000 -p 8081:8081 \
   -e REVOC_AUTH__MODE=none \
   -e REVOC_UPSTREAM__MOCK_MODE=true \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 for _i in $(seq 1 30); do
   curl -sf http://localhost:8080/health > /dev/null 2>&1 && break || sleep 2
 done

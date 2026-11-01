@@ -9,7 +9,7 @@ client at the REVOC proxy.
 pip install langchain langchain-openai openai
 docker run -d -p 8080:8080 -p 3000:3000 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
-  --name revoc ghcr.io/revoc-ai/revoc:latest
+  --name revoc ghcr.io/revoc-ai/revoc:beta
 ```
 
 ## Basic Chain

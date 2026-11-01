@@ -14,7 +14,7 @@ use crate::app::AppState;
 pub async fn health_handler() -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
-        "version": "1.0.0",
+        "version": env!("CARGO_PKG_VERSION"),
         "service": "revoc-proxy"
     }))
 }
@@ -65,7 +65,13 @@ pub async fn metrics_handler() -> String {
 }
 
 /// `POST /internal/reload` — hot-reload the policy engine without restart.
-pub async fn reload_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+///
+/// Requires `X-Admin-Key`, like every other internal endpoint.
+pub async fn reload_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    crate::handlers::emergency::require_admin(&headers, &state)?;
     state.policy_engine.reload_on_notification().await;
-    Json(json!({"status": "reloaded"}))
+    Ok(Json(json!({"status": "reloaded"})))
 }

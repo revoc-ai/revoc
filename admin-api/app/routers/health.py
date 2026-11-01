@@ -38,4 +38,4 @@ async def health(
         checks["opa"] = "unreachable"
 
     overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
-    return {"status": overall, "checks": checks, "version": "1.0.0"}
+    return {"status": overall, "checks": checks, "version": "0.1.0-beta.1"}

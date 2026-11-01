@@ -22,7 +22,7 @@ IMAGE_ML      := $(REGISTRY)/revoc:latest-ml
 VERSION       ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0-dev")
 COMMIT        := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE    := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-ADMIN_KEY     ?= dev-admin-key
+ADMIN_KEY     ?= dev-admin-key-local-only
 REVOC_URL     ?= http://localhost:8080
 INTERNAL_URL  ?= http://localhost:8081
 
@@ -185,16 +185,16 @@ integration-test:
 	pytest tests/integration/ -v --tb=short
 
 ## Run E2E governance journey tests against a live single-container stack.
-## Starts ghcr.io/revoc-ai/revoc:latest in mock mode, runs tests, then removes it.
+## Starts ghcr.io/revoc-ai/revoc:beta in mock mode, runs tests, then removes it.
 e2e-test:
 	docker rm -f revoc-e2e 2>/dev/null || true
 	docker run -d --name revoc-e2e \
-		-p 8080:8080 -p 3000:3000 -p 8081:8081 \
+		-p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$(ADMIN_KEY) \
 		-e REVOC_AUTH__MODE=none \
 		-e REVOC_UPSTREAM__MOCK_MODE=true \
 		-e REVOC_DASHBOARD__AUTH_MODE=none \
 		-e REVOC_POLICY__DECISION_CACHE_TTL_SECS=0 \
-		ghcr.io/revoc-ai/revoc:latest
+		ghcr.io/revoc-ai/revoc:beta
 	sleep 10
 	. admin-api/.venv/bin/activate && pip install -e "admin-api/.[dev]" -q && \
 	pytest tests/e2e/ -v --tb=short; \
@@ -246,7 +246,7 @@ emergency-deactivate:
 
 ## Show current kill-switch status across all scopes
 emergency-status:
-	curl -s $(INTERNAL_URL)/internal/emergency/kill-switch/status | jq .
+	curl -s -H "X-Admin-Key: $(ADMIN_KEY)" $(INTERNAL_URL)/internal/emergency/kill-switch/status | jq .
 
 ## ─── Release ─────────────────────────────────────────────────────────────────
 

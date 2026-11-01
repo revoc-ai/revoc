@@ -35,7 +35,7 @@ pub async fn proxy_sse_stream(
     let buffer_output = state.config.stream.buffer_output;
     let tool_call_accumulate = state.config.stream.tool_call_accumulate;
 
-    let detector = Arc::new(revoc_detector::DetectionEngine::new_for_testing());
+    let detector = state.pipeline.engine();
     let mut scanner = SlidingWindowScanner::new(window_size, Arc::clone(&detector));
     let mut accumulator = ToolCallAccumulator::default();
 
@@ -206,7 +206,14 @@ async fn governance_on_accumulated_calls(
             caller: caller.clone(),
             governance_depth: caller.governance_depth,
         };
-        let findings = state.pipeline.run(inspection_input).await.findings;
+        let result = state.pipeline.run(inspection_input).await;
+        if let Some(err) = result.detection_error {
+            warn!(error = %err, "Streamed tool-call detection incomplete");
+            if state.fail_closed() {
+                return Some(format!("Tool-call governance unavailable: {err}"));
+            }
+        }
+        let findings = result.findings;
 
         let policy_input = PolicyInput {
             request_id: trace_id.to_owned(),
@@ -227,6 +234,9 @@ async fn governance_on_accumulated_calls(
             Ok(d) => d,
             Err(e) => {
                 warn!(error = %e, "Streamed tool-call policy evaluation failed");
+                if state.fail_closed() {
+                    return Some(format!("Tool-call policy evaluation failed: {e}"));
+                }
                 continue;
             }
         };

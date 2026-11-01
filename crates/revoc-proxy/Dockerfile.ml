@@ -13,7 +13,7 @@
 #     -e REVOC_DETECTION__ONNX_ENABLED=true \
 #     -e REVOC_DETECTION__ONNX_MODEL_PATH=/models/bert-base-ner.onnx \
 #     -v $(pwd)/models:/models \
-#     ghcr.io/revoc-ai/revoc:latest-ml
+#     ghcr.io/revoc-ai/revoc:beta-ml
 
 # ── Stage 1: cargo-chef planner ───────────────────────────────────────────────
 FROM rust:slim-bookworm AS chef
@@ -56,14 +56,16 @@ COPY --from=builder /app/target/release/revoc-proxy /usr/local/bin/revoc-proxy
 COPY --from=builder /app/policies/default /policies/default
 
 # models/ directory for mounting ONNX model and tokenizer
-RUN mkdir -p /models && chown revoc:revoc /models
+RUN mkdir -p /models /data && chown revoc:revoc /models /data
 
 EXPOSE 8080 3000 9090
 
 USER revoc
 
 ENV REVOC_SERVER__ENVIRONMENT=development
-ENV REVOC_AUTH__ADMIN_KEY=dev-admin-key
+WORKDIR /data
+ENV REVOC_STORAGE__SQLITE_PATH=/data/revoc-audit.db
+VOLUME ["/data"]
 ENV REVOC_DETECTION__ONNX_ENABLED=false
 
 ENTRYPOINT ["/usr/local/bin/revoc-proxy", "serve"]

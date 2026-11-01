@@ -81,7 +81,17 @@ impl SlidingWindowScanner {
             governance_depth,
         };
 
-        let findings = self.detector.detect_default_timeout(&input).await;
+        let findings = match self.detector.detect_default_timeout(&input).await {
+            Ok(f) => f,
+            Err(e) => {
+                // Fail closed: an unscanned window is never forwarded.
+                return ChunkResult {
+                    bytes_to_forward: bytes::Bytes::new(),
+                    block_reason: Some(format!("Stream governance unavailable: {e}")),
+                    redacted_findings: Vec::new(),
+                };
+            }
+        };
         let blocking: Vec<Finding> = findings
             .into_iter()
             .filter(Finding::is_high_severity)

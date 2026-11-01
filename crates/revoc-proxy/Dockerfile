@@ -23,6 +23,8 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # Build the actual binary
 COPY . .
 RUN cargo build --release --bin revoc-proxy
+# Writable data directory for the SQLite audit DB (distroless has no shell).
+RUN mkdir -p /data
 
 # ── Stage 4: distroless runtime ───────────────────────────────────────────────
 FROM gcr.io/distroless/cc-debian12:nonroot
@@ -38,6 +40,13 @@ COPY --from=builder /app/target/release/revoc-proxy /revoc-proxy
 # Copy default policies (embedded at runtime)
 COPY --from=builder /app/policies/default /policies/default
 
+# SQLite audit DB lives in /data, owned by the nonroot user. Mount a volume
+# here to keep audit history across container restarts.
+COPY --from=builder --chown=65532:65532 /data /data
+WORKDIR /data
+ENV REVOC_STORAGE__SQLITE_PATH=/data/revoc-audit.db
+VOLUME ["/data"]
+
 # Expose: proxy (8080), dashboard (3000), Prometheus metrics (9090)
 EXPOSE 8080 3000 9090
 
@@ -50,11 +59,7 @@ USER nonroot
 # default only takes effect when no explicit environment is supplied.
 ENV REVOC_SERVER__ENVIRONMENT=development
 
-# Development-only default admin key for the internal emergency/kill-switch
-# API (port 8081) — lets the bare `docker run` smoke test exercise
-# /internal/emergency/kill-switch/* without extra setup. Production deploys
-# (docker-compose.yml / Helm) MUST override this via REVOC_AUTH__ADMIN_KEY
-# (or REVOC_ADMIN_KEY) with a strong, randomly generated secret.
-ENV REVOC_AUTH__ADMIN_KEY=dev-admin-key
+# No admin key is baked in: the internal API (port 8081, loopback-only by
+# default) rejects every request until REVOC_ADMIN_KEY is set at run time.
 
 ENTRYPOINT ["/revoc-proxy", "serve"]

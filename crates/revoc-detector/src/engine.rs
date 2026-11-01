@@ -61,6 +61,15 @@ impl DetectionEngine {
         Ok(Self { stages, metrics })
     }
 
+    /// Build an engine from an explicit list of stages (custom plugins,
+    /// fault-injection tests).
+    pub fn from_stages(stages: Vec<Arc<dyn DetectionStage>>) -> Self {
+        Self {
+            stages,
+            metrics: RevocMetrics::global(),
+        }
+    }
+
     /// Build a minimal engine suitable for tests and fuzz targets.
     ///
     /// Contains only [`RegexDetector`] using the global metrics singleton.
@@ -73,55 +82,169 @@ impl DetectionEngine {
 
     /// Run all detection stages concurrently and collect findings.
     ///
-    /// Stage errors are logged as warnings; the stage's findings are skipped.
-    /// The returned list is sorted by severity (descending).
+    /// Stage errors are logged as warnings and that stage's findings are
+    /// skipped. Use [`Self::detect_checked`] where a missing stage must fail
+    /// the request. The returned list is sorted by severity (descending).
     pub async fn detect(&self, input: &InspectionInput) -> Vec<Finding> {
+        self.run_stages(input).await.0
+    }
+
+    /// Run all stages; returns the findings and the number of stages that errored.
+    async fn run_stages(&self, input: &InspectionInput) -> (Vec<Finding>, usize) {
         let futures: Vec<_> = self
             .stages
             .iter()
             .map(|stage| {
                 let stage = Arc::clone(stage);
                 let input = input.clone();
-                async move { stage.detect(&input).await }
+                async move { (stage.name(), stage.detect(&input).await) }
             })
             .collect();
 
         let results = join_all(futures).await;
         let mut findings: Vec<Finding> = Vec::new();
+        let mut failed = 0usize;
 
-        for result in results {
+        for (name, result) in results {
             match result {
                 Ok(f) => findings.extend(f),
-                Err(e) => warn!(error = %e, "Detection stage error — skipping"),
+                Err(e) => {
+                    failed += 1;
+                    warn!(stage = name, error = %e, "Detection stage error");
+                }
             }
         }
 
         findings.sort_by(|a, b| b.severity.cmp(&a.severity));
-        findings
+        (findings, failed)
+    }
+
+    /// Run every stage and fail if any stage errored.
+    ///
+    /// # Errors
+    /// Returns [`RevocError::Detection`] naming how many stages failed, so the
+    /// caller can fail closed instead of treating partial results as clean.
+    pub async fn detect_checked(
+        &self,
+        input: &InspectionInput,
+    ) -> Result<Vec<Finding>, RevocError> {
+        let (findings, failed) = self.run_stages(input).await;
+        if failed > 0 {
+            return Err(RevocError::Detection(format!(
+                "{failed} detection stage(s) failed"
+            )));
+        }
+        Ok(findings)
     }
 
     /// Run detection with a per-call timeout.
     ///
-    /// Returns `vec![]` and logs a warning when the timeout is exceeded.
+    /// # Errors
+    /// Returns [`RevocError::Detection`] when the timeout is exceeded or any
+    /// stage fails. Never returns an empty "clean" result in place of a scan.
     pub async fn detect_with_timeout(
         &self,
         input: &InspectionInput,
         time_limit: Duration,
-    ) -> Vec<Finding> {
-        if let Ok(findings) = timeout(time_limit, self.detect(input)).await {
-            findings
+    ) -> Result<Vec<Finding>, RevocError> {
+        if let Ok(result) = timeout(time_limit, self.detect_checked(input)).await {
+            result
         } else {
-            warn!(
-                timeout_ms = time_limit.as_millis(),
-                "Detection timed out — returning empty findings"
-            );
-            vec![]
+            warn!(timeout_ms = time_limit.as_millis(), "Detection timed out");
+            Err(RevocError::Detection(format!(
+                "detection timed out after {}ms",
+                time_limit.as_millis()
+            )))
         }
     }
 
     /// Run detection with the default 8-second timeout.
-    pub async fn detect_default_timeout(&self, input: &InspectionInput) -> Vec<Finding> {
+    ///
+    /// # Errors
+    /// See [`Self::detect_with_timeout`].
+    pub async fn detect_default_timeout(
+        &self,
+        input: &InspectionInput,
+    ) -> Result<Vec<Finding>, RevocError> {
         self.detect_with_timeout(input, DEFAULT_DETECT_TIMEOUT)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use revoc_core::{CallerContext, DetectionTier, RequestType};
+
+    #[derive(Debug)]
+    struct FailingStage;
+    #[async_trait]
+    impl DetectionStage for FailingStage {
+        fn name(&self) -> &'static str {
+            "failing"
+        }
+        fn tier(&self) -> DetectionTier {
+            DetectionTier::HttpPlugin
+        }
+        async fn detect(&self, _input: &InspectionInput) -> Result<Vec<Finding>, RevocError> {
+            Err(RevocError::Detection("injected failure".into()))
+        }
+    }
+
+    #[derive(Debug)]
+    struct SlowStage;
+    #[async_trait]
+    impl DetectionStage for SlowStage {
+        fn name(&self) -> &'static str {
+            "slow"
+        }
+        fn tier(&self) -> DetectionTier {
+            DetectionTier::HttpPlugin
+        }
+        async fn detect(&self, _input: &InspectionInput) -> Result<Vec<Finding>, RevocError> {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(Vec::new())
+        }
+    }
+
+    fn input() -> InspectionInput {
+        InspectionInput {
+            request_id: "t".into(),
+            request_type: RequestType::LlmRequest,
+            raw_body: bytes::Bytes::from_static(b"{}"),
+            parsed_messages: None,
+            mcp_call: None,
+            caller: CallerContext::default(),
+            governance_depth: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_stage_is_an_error_not_clean() {
+        let engine =
+            DetectionEngine::from_stages(vec![Arc::new(RegexDetector), Arc::new(FailingStage)]);
+        let res = engine
+            .detect_with_timeout(&input(), Duration::from_secs(1))
+            .await;
+        assert!(matches!(res, Err(RevocError::Detection(_))));
+    }
+
+    #[tokio::test]
+    async fn timeout_is_an_error_not_clean() {
+        let engine = DetectionEngine::from_stages(vec![Arc::new(SlowStage)]);
+        let res = engine
+            .detect_with_timeout(&input(), Duration::from_millis(20))
+            .await;
+        assert!(matches!(res, Err(RevocError::Detection(_))));
+    }
+
+    #[tokio::test]
+    async fn healthy_stages_return_ok() {
+        let engine = DetectionEngine::new_for_testing();
+        let res = engine
+            .detect_with_timeout(&input(), Duration::from_secs(1))
+            .await;
+        assert!(res.is_ok());
     }
 }

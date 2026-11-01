@@ -96,6 +96,11 @@ pub enum RevocError {
     /// A security invariant was violated (SSRF, header injection, etc.).
     #[error("Security violation: {0}")]
     Security(String),
+
+    /// Detection did not complete (timeout or a failed stage). Callers fail
+    /// closed: an incomplete scan is never treated as a clean one.
+    #[error("Detection incomplete: {0}")]
+    Detection(String),
 }
 
 impl RevocError {
@@ -117,6 +122,7 @@ impl RevocError {
             Self::BodyTooLarge { .. } => 413,
             Self::RequestParse(_) => 400,
             Self::PolicyEngineUnreachable(_)
+            | Self::Detection(_)
             | Self::GovernanceDepthExceeded { .. }
             | Self::KillSwitchActive { .. } => 503,
             Self::Upstream { status, .. } => *status,

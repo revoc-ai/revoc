@@ -267,6 +267,13 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             .run(inspection_input)
             .instrument(span.clone())
             .await;
+        if let Some(err) = &pipeline_result.detection_error {
+            warn!(error = %err, "MCP argument detection incomplete");
+            if state.fail_closed() {
+                let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                return mcp_error_resp(503, body, &trace_id, &dash_base);
+            }
+        }
         let findings = pipeline_result.findings;
         let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
         let was_normalized = findings.iter().any(|f| f.was_normalized);
@@ -297,6 +304,10 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             Ok(d) => d,
             Err(e) => {
                 warn!(error = %e, "Policy eval failed");
+                if state.fail_closed() {
+                    let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                    return mcp_error_resp(503, body, &trace_id, &dash_base);
+                }
                 revoc_core::PolicyDecision::allow()
             }
         };
@@ -371,6 +382,13 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             .run(result_inspection)
             .instrument(span.clone())
             .await;
+        if let Some(err) = &result_pipeline.detection_error {
+            warn!(error = %err, "MCP result detection incomplete");
+            if state.fail_closed() {
+                let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                return mcp_error_resp(503, body, &trace_id, &dash_base);
+            }
+        }
         let result_findings = result_pipeline.findings;
         let result_was_normalized = result_findings.iter().any(|f| f.was_normalized);
 
@@ -400,6 +418,10 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
             Ok(d) => d,
             Err(e) => {
                 warn!(error = %e, "Result policy eval failed");
+                if state.fail_closed() {
+                    let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                    return mcp_error_resp(503, body, &trace_id, &dash_base);
+                }
                 revoc_core::PolicyDecision::allow()
             }
         };
@@ -413,7 +435,12 @@ pub async fn mcp_handler(State(state): State<AppState>, req: axum::extract::Requ
                 ) {
                     Ok((redacted, _)) => redacted,
                     Err(e) => {
+                        // Fail closed: never return the unredacted tool result.
                         warn!(error = %e, "MCP result redaction failed");
+                        if state.fail_closed() {
+                            let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                            return mcp_error_resp(503, body, &trace_id, &dash_base);
+                        }
                         result_bytes.to_vec()
                     }
                 }
@@ -586,6 +613,13 @@ async fn handle_sampling_create_message(
         .run(inspection_input)
         .instrument(span.clone())
         .await;
+    if let Some(err) = &pipeline_result.detection_error {
+        warn!(error = %err, "Sampling detection incomplete");
+        if state.fail_closed() {
+            let body = RevocErrorResponse::internal_error(trace_id, dash_base);
+            return mcp_error_resp(503, body, trace_id, dash_base);
+        }
+    }
     let findings = pipeline_result.findings;
     let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -619,6 +653,10 @@ async fn handle_sampling_create_message(
         Ok(d) => d,
         Err(e) => {
             warn!(error = %e, "Sampling policy eval failed");
+            if state.fail_closed() {
+                let body = RevocErrorResponse::internal_error(trace_id, dash_base);
+                return mcp_error_resp(503, body, trace_id, dash_base);
+            }
             revoc_core::PolicyDecision::allow()
         }
     };
@@ -842,7 +880,10 @@ async fn forward_to_mcp_server(
         .inner()
         .post(&server.url)
         .header("Content-Type", "application/json")
-        .header("User-Agent", "revoc-proxy/1.0.0")
+        .header(
+            "User-Agent",
+            concat!("revoc-proxy/", env!("CARGO_PKG_VERSION")),
+        )
         .header(crate::depth::REVOC_DEPTH_HEADER, next_depth.to_string())
         .body(body)
         .send()

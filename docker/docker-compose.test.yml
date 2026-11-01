@@ -23,8 +23,10 @@ services:
       - "8080:8080"
       - "3000:3000"
       - "9090:9090"
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
+      # Container-internal bind so the loopback-only host mapping above works.
+      REVOC_SERVER__INTERNAL_HOST: 0.0.0.0
       REVOC_AUTH__MODE: none
       REVOC_STORAGE__BACKEND: sqlite
       REVOC_POLICY__ENGINE: native
@@ -42,10 +44,8 @@ services:
       # request with no keys to match. Set to "none" so integration tests can
       # exercise the dashboard REST/SSE API in this offline stack.
       REVOC_DASHBOARD__AUTH_MODE: none
-      # Admin key for /internal/emergency endpoints (port 8081). Falls back to
-      # "dev-admin-key" if unset (crates/revoc-proxy/src/handlers/emergency.rs),
-      # set explicitly here for clarity.
-      REVOC_ADMIN_KEY: dev-admin-key
+      # Admin key for /internal/* endpoints (port 8081). Test-stack only.
+      REVOC_ADMIN_KEY: dev-admin-key-local-only
       # Disable the policy decision cache for integration tests. The cache
       # key (crates/revoc-policy/src/cache.rs) is intentionally coarse
       # (caller identity + finding-type/pattern summary + model, NOT the raw
@@ -85,8 +85,10 @@ services:
     restart: "no"
     ports:
       - "8082:8080"
-      - "8085:8081"
+      - "127.0.0.1:8085:8081"
     environment:
+      # Container-internal bind so the loopback-only host mapping above works.
+      REVOC_SERVER__INTERNAL_HOST: 0.0.0.0
       REVOC_AUTH__MODE: none
       REVOC_STORAGE__BACKEND: sqlite
       REVOC_POLICY__ENGINE: native
@@ -101,7 +103,7 @@ services:
       REVOC_MCP__TRUSTED_SERVERS__0__ID: mock-mcp
       REVOC_MCP__TRUSTED_SERVERS__0__URL: http://mock-mcp:8080/mcp
       REVOC_DASHBOARD__AUTH_MODE: none
-      REVOC_ADMIN_KEY: dev-admin-key
+      REVOC_ADMIN_KEY: dev-admin-key-local-only
       REVOC_POLICY__DECISION_CACHE_TTL_SECS: "0"
       REVOC_SERVER__DASHBOARD_PORT: "0"
     depends_on:
@@ -130,6 +132,8 @@ services:
     ports:
       - "8083:8080"
     environment:
+      # Container-internal bind so the loopback-only host mapping above works.
+      REVOC_SERVER__INTERNAL_HOST: 0.0.0.0
       REVOC_AUTH__MODE: jwt
       REVOC_AUTH__JWT_SECRET_ENV: REVOC_JWT_SECRET
       REVOC_JWT_SECRET: test-jwt-secret-for-integration-tests
@@ -198,6 +202,8 @@ services:
     ports:
       - "8084:8080"
     environment:
+      # Container-internal bind so the loopback-only host mapping above works.
+      REVOC_SERVER__INTERNAL_HOST: 0.0.0.0
       REVOC_AUTH__MODE: none
       REVOC_STORAGE__BACKEND: sqlite
       REVOC_POLICY__ENGINE: sidecar
