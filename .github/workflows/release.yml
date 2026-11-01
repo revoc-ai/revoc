@@ -109,6 +109,9 @@ jobs:
     name: Build and push container images
     needs: [test, changelog]
     runs-on: ubuntu-latest
+    env:
+      # No build-record artifacts; the release job does not need them.
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
       - uses: actions/checkout@v4
       - name: Extract version from tag
@@ -271,10 +274,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Download only the release assets: docker/build-push-action also
+      # uploads *.dockerbuild build records, which fail to extract here.
       - uses: actions/download-artifact@v4
         with:
+          pattern: revoc-proxy-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: dist
       - uses: softprops/action-gh-release@v2
         with:
           files: |
