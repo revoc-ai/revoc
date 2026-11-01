@@ -105,26 +105,33 @@ jobs:
           path: dist/*.tar.gz
 
   # ── Build and push container images (multi-arch) ─────────────────────────────
-  docker-publish:
-    name: Build and push container images
+  # Each architecture builds on a native runner (no QEMU), pushed by digest;
+  # docker-publish then joins the digests into one multi-arch tag per image.
+  docker-build:
+    name: Build image (${{ matrix.variant }}, ${{ matrix.arch }})
     needs: [test, changelog]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        variant: [proxy, ml]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - variant: proxy
+            dockerfile: crates/revoc-proxy/Dockerfile
+            ml: "false"
+          - variant: ml
+            dockerfile: crates/revoc-proxy/Dockerfile.ml
+            ml: "true"
+    env:
+      # No build-record artifacts; the release job does not need them.
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
       - uses: actions/checkout@v4
-      - name: Extract version from tag
-        id: meta
-        run: |
-          v="${GITHUB_REF_NAME#v}"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          # Pre-releases (v0.1.0-beta.1) never move the :latest tags.
-          if [[ "$v" == *-* ]]; then
-            echo "latest_tag=${{ env.IMAGE_PROXY }}:beta" >> "$GITHUB_OUTPUT"
-            echo "latest_ml_tag=${{ env.IMAGE_PROXY }}:beta-ml" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest_tag=${{ env.IMAGE_PROXY }}:latest" >> "$GITHUB_OUTPUT"
-            echo "latest_ml_tag=${{ env.IMAGE_PROXY }}:latest-ml" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -132,35 +139,68 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push proxy image
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: crates/revoc-proxy/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
-          tags: |
-            ${{ steps.meta.outputs.latest_tag }}
-            ${{ env.IMAGE_PROXY }}:${{ steps.meta.outputs.version }}
-      - name: Build and push ML-enabled image
-        uses: docker/build-push-action@v6
+            ML_ENABLED=${{ matrix.ml }}
+          outputs: type=image,name=${{ env.IMAGE_PROXY }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ matrix.arch }}
+      - name: Record digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: crates/revoc-proxy/Dockerfile.ml
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.updated_at }}
-            ML_ENABLED=true
-          tags: |
-            ${{ steps.meta.outputs.latest_ml_tag }}
-            ${{ env.IMAGE_PROXY }}:${{ steps.meta.outputs.version }}-ml
+          name: digests-${{ matrix.variant }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-publish:
+    name: Publish multi-arch image tags
+    needs: [docker-build]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [proxy, ml]
+    steps:
+      - name: Compute tags
+        id: meta
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          suffix=""
+          [[ "${{ matrix.variant }}" == "ml" ]] && suffix="-ml"
+          # Pre-releases (v0.1.0-beta.1) never move the :latest tags.
+          if [[ "$v" == *-* ]]; then moving="beta"; else moving="latest"; fi
+          echo "tags=-t ${{ env.IMAGE_PROXY }}:${v}${suffix} -t ${{ env.IMAGE_PROXY }}:${moving}${suffix}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-${{ matrix.variant }}-*
+          path: /tmp/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create ${{ steps.meta.outputs.tags }} $(printf '${{ env.IMAGE_PROXY }}@sha256:%s ' *)
+      - name: Inspect
+        run: docker buildx imagetools inspect "${{ env.IMAGE_PROXY }}:${GITHUB_REF_NAME#v}$([[ '${{ matrix.variant }}' == ml ]] && echo -ml)"
 
   # ── Package Helm chart ────────────────────────────────────────────────────────
   helm-package:
@@ -271,10 +311,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Download only the release assets: docker/build-push-action also
+      # uploads *.dockerbuild build records, which fail to extract here.
       - uses: actions/download-artifact@v4
         with:
+          pattern: revoc-proxy-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: dist
       - uses: softprops/action-gh-release@v2
         with:
           files: |
