@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "revoc-gateway"
-version = "1.0.0"
+version = "0.1.0b1"
 description = "REVOC Admin API — policy management, audit, and emergency controls"
 requires-python = ">=3.12,<3.13"
 dependencies = [

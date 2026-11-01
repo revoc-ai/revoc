@@ -13,7 +13,7 @@ The stack must be running before this suite is invoked:
         -e REVOC_UPSTREAM__MOCK_MODE=true \\
         -e REVOC_DASHBOARD__AUTH_MODE=none \\
         -e REVOC_POLICY__DECISION_CACHE_TTL_SECS=0 \\
-        ghcr.io/revoc-ai/revoc:latest
+        ghcr.io/revoc-ai/revoc:beta
 
     pytest tests/e2e/ -v
 
@@ -30,7 +30,7 @@ import pytest
 PROXY_BASE = os.getenv("REVOC_E2E_BASE", "http://localhost:8080")
 DASHBOARD_BASE = os.getenv("REVOC_E2E_DASHBOARD_BASE", "http://localhost:3000")
 INTERNAL_BASE = os.getenv("REVOC_E2E_INTERNAL_BASE", "http://localhost:8081")
-ADMIN_KEY = os.getenv("REVOC_E2E_ADMIN_KEY", "dev-admin-key")
+ADMIN_KEY = os.getenv("REVOC_E2E_ADMIN_KEY", "dev-admin-key-local-only")
 
 
 def _wait_for(url: str, timeout: float = 60.0) -> None:
@@ -70,7 +70,9 @@ async def dashboard():
 
 @pytest.fixture
 async def internal():
-    async with httpx.AsyncClient(base_url=INTERNAL_BASE, timeout=30.0) as client:
+    async with httpx.AsyncClient(
+        base_url=INTERNAL_BASE, timeout=30.0, headers={"X-Admin-Key": ADMIN_KEY}
+    ) as client:
         yield client
 
 

@@ -175,6 +175,20 @@ async fn run_llm_handler(
         .run(inspection_input)
         .instrument(span.clone())
         .await;
+    if let Some(err) = &pipeline_result.detection_error {
+        warn!(error = %err, "Detection incomplete");
+        if state.fail_closed() {
+            let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+            return make_error_response(
+                503,
+                body,
+                &trace_id,
+                &request_id,
+                &dash_base,
+                overall_start,
+            );
+        }
+    }
     let findings = pipeline_result.findings;
     let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
     let was_normalized = findings.iter().any(|f| f.was_normalized);
@@ -207,7 +221,7 @@ async fn run_llm_handler(
         Ok(d) => d,
         Err(e) => {
             warn!(error = %e, "Policy evaluation failed");
-            if !state.config.policy.fail_open {
+            if state.fail_closed() {
                 let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
                 return make_error_response(
                     503,
@@ -339,7 +353,19 @@ async fn run_llm_handler(
             {
                 Ok((redacted, _)) => redacted,
                 Err(e) => {
+                    // Fail closed: never forward the unredacted body.
                     warn!(error = %e, "Redaction failed");
+                    if state.fail_closed() {
+                        let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+                        return make_error_response(
+                            503,
+                            body,
+                            &trace_id,
+                            &request_id,
+                            &dash_base,
+                            overall_start,
+                        );
+                    }
                     body_bytes.clone()
                 }
             }

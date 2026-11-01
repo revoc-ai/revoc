@@ -9,11 +9,13 @@ Docker container with SQLite for audit storage. No external dependencies.
 docker run -d \
   -p 8080:8080 \
   -p 3000:3000 \
-  -p 8081:8081 \
+  -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 \
+  -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -v revoc-data:/var/lib/revoc \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 Verify:
@@ -28,11 +30,12 @@ Mount a volume for the SQLite database to survive container restarts:
 
 ```bash
 docker run -d \
-  -p 8080:8080 -p 3000:3000 -p 8081:8081 \
+  -p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -v /opt/revoc/data:/var/lib/revoc \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 The SQLite database is written to `/var/lib/revoc/revoc-audit.db`.
@@ -41,7 +44,8 @@ The SQLite database is written to `/var/lib/revoc/revoc-audit.db`.
 
 ```bash
 docker run -d \
-  -p 8080:8080 -p 3000:3000 -p 8081:8081 \
+  -p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
   -e REVOC_AUTH__MODE=apikey \
@@ -50,7 +54,7 @@ docker run -d \
   -e REVOC_SERVER__ENVIRONMENT=production \
   -v revoc-data:/var/lib/revoc \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 ## Mock Mode (No API Key Required)
@@ -59,11 +63,12 @@ For development and testing:
 
 ```bash
 docker run -d \
-  -p 8080:8080 -p 3000:3000 -p 8081:8081 \
+  -p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 \
+  -e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e REVOC_UPSTREAM__MOCK_MODE=true \
   -e REVOC_AUTH__MODE=none \
   --name revoc-dev \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 ## Resource Requirements
@@ -77,14 +82,15 @@ docker run -d \
 ## Upgrade
 
 ```bash
-docker pull ghcr.io/revoc-ai/revoc:latest
+docker pull ghcr.io/revoc-ai/revoc:beta
 docker stop revoc
 docker rm revoc
-docker run -d -p 8080:8080 -p 3000:3000 -p 8081:8081 \
+docker run -d -p 8080:8080 -p 3000:3000 -p 127.0.0.1:8081:8081 \
+-e REVOC_SERVER__INTERNAL_HOST=0.0.0.0 -e REVOC_ADMIN_KEY=$REVOC_ADMIN_KEY \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -v revoc-data:/var/lib/revoc \
   --name revoc \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 ```
 
 Migrations run automatically on startup. Downtime is limited to the container

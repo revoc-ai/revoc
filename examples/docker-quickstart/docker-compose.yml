@@ -13,7 +13,7 @@ name: revoc-quickstart
 
 services:
   revoc:
-    image: ghcr.io/revoc-ai/revoc:latest
+    image: ghcr.io/revoc-ai/revoc:beta
     container_name: revoc-quickstart
     restart: unless-stopped
     ports:

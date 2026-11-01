@@ -1,6 +1,6 @@
 [project]
 name = "revoc-sdk"
-version = "1.0.0"
+version = "0.1.0b1"
 description = "Zero-code-change governance SDK for REVOC — drop-in OpenAI client wrapper."
 readme = "README.md"
 requires-python = ">=3.12"

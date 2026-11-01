@@ -45,7 +45,7 @@ docker run -d \
   -e REVOC_UPSTREAM__MOCK_MODE=true \
   -e REVOC_AUTH__MODE=none \
   --name revoc-audit \
-  ghcr.io/revoc-ai/revoc:latest
+  ghcr.io/revoc-ai/revoc:beta
 
 # Monitor outbound connections from the container
 docker exec revoc-audit ss -tnp | grep ESTABLISHED

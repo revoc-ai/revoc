@@ -144,7 +144,7 @@ api_keys_file = ""
 # Admin key for the internal emergency/kill-switch API (port 8081).
 # Development-only default — production MUST override via REVOC_AUTH__ADMIN_KEY
 # with a strong, randomly generated secret.
-admin_key = "dev-admin-key"
+admin_key = "dev-admin-key-local-only"
 
 [dashboard]
 # Dashboard is unauthenticated in development.

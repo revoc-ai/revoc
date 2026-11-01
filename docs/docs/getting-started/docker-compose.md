@@ -29,7 +29,7 @@ Expected output:
 
 ```
 NAME               IMAGE                           STATUS
-revoc-proxy        ghcr.io/revoc-ai/revoc:latest   running (healthy)
+revoc-proxy        ghcr.io/revoc-ai/revoc:beta   running (healthy)
 revoc-postgres     postgres:16-alpine              running (healthy)
 revoc-redis        redis:7-alpine                  running (healthy)
 ```
@@ -47,7 +47,7 @@ version: "3.9"
 
 services:
   proxy:
-    image: ghcr.io/revoc-ai/revoc:latest
+    image: ghcr.io/revoc-ai/revoc:beta
     container_name: revoc-proxy
     ports:
       - "8080:8080"

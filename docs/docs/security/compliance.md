@@ -1,7 +1,14 @@
 # Compliance
 
-REVOC provides controls applicable to several regulatory frameworks. This page
-maps REVOC features to specific regulatory requirements.
+REVOC provides controls that can support parts of several regulatory
+frameworks. This page maps REVOC features to specific requirements.
+
+!!! warning "Not a certification"
+    REVOC is beta software. It is not certified under, and does not by itself
+    make a system compliant with, HIPAA, PCI DSS, GDPR, SOC 2 or any other
+    framework. Compliance depends on your whole system and must be assessed by
+    your own auditors. The compliance profiles in `policies/examples/` are
+    examples and do not yet change the proxy's runtime enforcement.
 
 ## HIPAA (US Health Insurance Portability and Accountability Act)
 
@@ -15,7 +22,7 @@ Information (PHI) on behalf of covered entities or business associates.
 | HIPAA Requirement | REVOC Control |
 |---|---|
 | § 164.312(a)(1) — Access control | API key authentication with per-caller identity; `mcp_tool_acl_v1` limits tool access per org |
-| § 164.312(b) — Audit controls | `audit_events` table records every governed request; immutable audit log |
+| § 164.312(b) — Audit controls | `audit_events` table records every governed request (not tamper-evident: no hash chain or write-once export yet) |
 | § 164.312(c)(1) — Integrity | Bidirectional governance ensures PHI is not introduced into AI responses |
 | § 164.312(e)(2)(ii) — Encryption in transit | Upstream connections use TLS (`rustls-tls`); configure HTTPS on the dashboard port |
 | § 164.514 — De-identification | HIPAA profile removes all 18 Safe Harbor identifiers before LLM processing |
@@ -39,7 +46,7 @@ Primary Account Numbers (PANs) or other cardholder data.
 | Req 3.2 — Do not store sensitive auth data | `secret_block_v1` blocks any request containing passwords, private keys, tokens |
 | Req 7 — Restrict access | Per-caller API keys with policy profiles limit which models and tools each caller can use |
 | Req 10.2 — Implement audit trails | Every governance decision is logged with caller identity, timestamp, and rule IDs |
-| Req 10.5 — Secure audit logs | Audit log is append-only; no delete endpoint in the admin API |
+| Req 10.5 — Secure audit logs | No delete endpoint in the admin API; database-level protection (permissions, backups, write-once export) is the operator's responsibility |
 | Req 10.7 — Retain for 12 months | Set `audit_retention_days = 365` in the PCI-DSS policy bundle |
 
 Apply the [PCI-DSS profile](../policies/compliance-profiles.md) for the complete control set.

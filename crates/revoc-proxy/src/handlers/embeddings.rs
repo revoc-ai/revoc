@@ -107,6 +107,13 @@ pub async fn embeddings_handler(
         governance_depth,
     };
     let pipeline_result = state.pipeline.run(inspection_input).await;
+    if let Some(err) = &pipeline_result.detection_error {
+        warn!(error = %err, "Embeddings detection incomplete");
+        if state.fail_closed() {
+            let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
+            return error_resp(503, body, &trace_id, &dash_base, overall_start);
+        }
+    }
     let findings = pipeline_result.findings;
     let detection_ms = detection_start.elapsed().as_secs_f64() * 1000.0;
     let was_normalized = findings.iter().any(|f| f.was_normalized);
@@ -134,7 +141,7 @@ pub async fn embeddings_handler(
         Ok(d) => d,
         Err(e) => {
             warn!(error = %e, "Embeddings policy evaluation failed");
-            if !state.config.policy.fail_open {
+            if state.fail_closed() {
                 let body = RevocErrorResponse::internal_error(&trace_id, &dash_base);
                 return error_resp(503, body, &trace_id, &dash_base, overall_start);
             }

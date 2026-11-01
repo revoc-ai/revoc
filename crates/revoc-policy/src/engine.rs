@@ -67,7 +67,8 @@ impl RevocPolicyEngine {
                 &cfg.policy.wasm_bundle_path,
                 cache,
                 enforcement_mode,
-            ))),
+                cfg.policy.fail_open,
+            )?)),
 
             other => {
                 return Err(RevocError::Configuration(format!(

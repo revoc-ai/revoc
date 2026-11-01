@@ -27,6 +27,17 @@ pub struct PipelineResult {
     pub elapsed_ms: f64,
     /// Per-stage timing in milliseconds. Keys match stage names.
     pub per_stage_ms: HashMap<String, f64>,
+    /// Set when detection did not complete (timeout or a failed stage).
+    /// `findings` is then empty and MUST NOT be read as "no findings":
+    /// handlers fail closed unless `policy.fail_open = true`.
+    pub detection_error: Option<String>,
+}
+
+impl PipelineResult {
+    /// `true` when every detection stage ran to completion.
+    pub fn is_complete(&self) -> bool {
+        self.detection_error.is_none()
+    }
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────────────────
@@ -43,6 +54,11 @@ impl Pipeline {
         Self { engine, timeout }
     }
 
+    /// The detection engine this pipeline runs (shared with the stream scanner).
+    pub fn engine(&self) -> Arc<DetectionEngine> {
+        Arc::clone(&self.engine)
+    }
+
     /// Build a `Pipeline` from a full [`Config`] and global metrics.
     ///
     /// # Errors
@@ -54,13 +70,17 @@ impl Pipeline {
 
     /// Run the full detection + deduplication pipeline for a single request.
     ///
-    /// Always returns a [`PipelineResult`] — never panics, never propagates errors.
-    /// Detection errors are logged inside the engine and result in empty findings.
+    /// Always returns a [`PipelineResult`] — never panics. A timeout or stage
+    /// failure is reported in [`PipelineResult::detection_error`].
     pub async fn run(&self, input: InspectionInput) -> PipelineResult {
         let start = Instant::now();
         let mcp_call = input.mcp_call.clone();
 
-        let raw = self.engine.detect_with_timeout(&input, self.timeout).await;
+        let (raw, detection_error) =
+            match self.engine.detect_with_timeout(&input, self.timeout).await {
+                Ok(f) => (f, None),
+                Err(e) => (Vec::new(), Some(e.to_string())),
+            };
         let detection_ms = start.elapsed().as_secs_f64() * 1000.0;
 
         let findings = deduplicate(raw);
@@ -74,6 +94,7 @@ impl Pipeline {
             mcp_call,
             elapsed_ms,
             per_stage_ms,
+            detection_error,
         }
     }
 }

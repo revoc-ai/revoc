@@ -5,7 +5,7 @@ Before running:
     docker run -d -p 8080:8080 -p 3000:3000 \
       -e REVOC_UPSTREAM__MOCK_MODE=true \
       -e REVOC_AUTH__MODE=none \
-      --name revoc ghcr.io/revoc-ai/revoc:latest
+      --name revoc ghcr.io/revoc-ai/revoc:beta
 
     pip install openai
 """
@@ -111,7 +111,7 @@ def main() -> None:
         print("  docker run -d -p 8080:8080 -p 3000:3000 \\")
         print("    -e REVOC_UPSTREAM__MOCK_MODE=true \\")
         print("    -e REVOC_AUTH__MODE=none \\")
-        print("    --name revoc ghcr.io/revoc-ai/revoc:latest")
+        print("    --name revoc ghcr.io/revoc-ai/revoc:beta")
         sys.exit(1)
 
     print("REVOC proxy is healthy.")

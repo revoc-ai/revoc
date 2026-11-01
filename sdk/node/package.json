@@ -1,6 +1,6 @@
 {
   "name": "@revoc-io/sdk",
-  "version": "1.0.0",
+  "version": "0.1.0-beta.1",
   "description": "Zero-code-change governance SDK for REVOC — drop-in OpenAI client wrapper.",
   "license": "Apache-2.0",
   "author": "REVOC (https://revoc.io)",

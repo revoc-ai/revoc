@@ -149,9 +149,10 @@ wasm_bundle_path = ""
 # only safe setting for production. Never set to true in a committed config.
 fail_open = false
 
-# How long (seconds) to cache identical policy decisions. Reduces policy engine
-# load for repeated requests with the same findings + caller context.
-decision_cache_ttl_secs = 60
+# How long (seconds) to cache policy decisions; 0 disables the cache.
+# The cache key does not include tool arguments or session state, so keep this
+# at 0 unless reusing a decision across calls to the same tool is acceptable.
+decision_cache_ttl_secs = 0
 
 # Maximum number of entries in the policy decision LRU cache.
 decision_cache_max_entries = 10000
@@ -342,7 +343,7 @@ otlp_endpoint = ""
 service_name = "revoc-proxy"
 
 # Service version reported in OTel resource attributes.
-service_version = "1.0.0"
+service_version = "0.1.0-beta.1"
 
 # Fraction of traces to sample (0.0 = no sampling, 1.0 = sample everything).
 # In production, consider 0.1–0.5 to reduce collector load.

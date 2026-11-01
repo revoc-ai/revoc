@@ -6,6 +6,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.0-beta.1] — Unreleased
+
+First public beta. Not yet recommended as the only control in front of
+production traffic; see "Project status" in the README.
+
+### Security
+- Every governance failure now fails closed (unless `policy.fail_open = true`):
+  detection timeouts and failed detector stages, policy evaluation errors on
+  the MCP and streamed tool-call paths, and redaction errors on LLM requests
+  and MCP tool results all return 503 instead of forwarding the request.
+- A WASM policy bundle that is missing or fails to load stops startup instead
+  of silently falling back to the native engine.
+- The internal admin API binds to `127.0.0.1` by default
+  (`server.internal_host` / `server.internal_port`).
+- No default admin key: the images no longer ship `dev-admin-key`, and an
+  unset or short (< 16 characters) key disables the admin API.
+- `/internal/reload` and `/internal/emergency/kill-switch/status` now require
+  `X-Admin-Key`; client API keys (`REVOC_API_KEYS`) are no longer accepted as
+  admin keys.
+- The policy decision cache is off by default (`decision_cache_ttl_secs = 0`)
+  because its key does not cover tool arguments or session state.
+
+### Fixed
+- The container image now has a writable `/data` directory and stores the
+  SQLite audit DB at `/data/revoc-audit.db`.
+- Streaming governance uses the configured detection engine instead of a
+  regex-only test engine.
+- `revoc-proxy emergency` CLI commands send `X-Admin-Key` (they previously sent
+  a bearer token the server ignored); `status` now takes `--admin-key`.
+
+### Changed
+- Version numbers are aligned on 0.1.0-beta.1 (Python packages 0.1.0b1).
+  Pre-release tags publish images as `:beta`, npm under the `beta` dist-tag,
+  and GitHub releases as pre-releases.
+- README and docs no longer claim production readiness, tamper-proof audit,
+  compliance certification, published latency numbers, a chart repository or
+  Postgres audit storage on the proxy.
+
 ## [0.1.0] — 2024-01-01
 
 ### Added

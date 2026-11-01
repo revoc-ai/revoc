@@ -19,7 +19,7 @@ from revoc_sdk.governance import GovernanceClient
 from revoc_sdk.mcp import RevocMcpClient, RevocMcpError, governed_tool_call
 from revoc_sdk.patch import patch, unpatch
 
-__version__ = "1.0.0"
+__version__ = "0.1.0b1"
 
 __all__ = [
     "GovernanceClient",

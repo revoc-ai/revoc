@@ -436,6 +436,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// `true` unless `policy.fail_open` is set. Every governance failure
+    /// (detection incomplete, policy error, redaction error) blocks when this
+    /// holds — an unchecked request is never forwarded (SPEC.md §3 P7).
+    pub fn fail_closed(&self) -> bool {
+        !self.config.policy.fail_open
+    }
+
     /// Spawn an async, batched audit-event write without blocking the request
     /// path (SPEC.md §23 Rule 25). The write is tracked via
     /// `pending_audit_writes` so [`crate::shutdown::graceful_shutdown`] can
@@ -533,7 +540,7 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
 pub struct AppRouters {
     /// Main proxy router (binds on `cfg.server.port`, default 8080).
     pub main: Router,
-    /// Internal admin router (binds on 127.0.0.1:8081 ONLY).
+    /// Internal admin router (binds on `server.internal_host:internal_port`, loopback by default).
     pub internal: Router,
     /// Dashboard SPA router (binds on `cfg.server.dashboard_port`).
     pub dashboard: Option<Router>,
@@ -585,7 +592,7 @@ pub fn build_routers(state: &AppState) -> AppRouters {
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(request_id_middleware));
 
-    // ── Internal admin router (127.0.0.1:8081 ONLY) ──────────────────────────
+    // ── Internal admin router (loopback by default) ───────────────────────────────────────────────────
     let internal = Router::new()
         .route("/internal/reload", post(reload_handler))
         .route(

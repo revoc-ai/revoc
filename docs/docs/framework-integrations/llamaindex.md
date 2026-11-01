@@ -8,7 +8,7 @@ REVOC governs LlamaIndex applications by intercepting all OpenAI calls at the pr
 pip install llama-index llama-index-llms-openai llama-index-embeddings-openai
 docker run -d -p 8080:8080 -p 3000:3000 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
-  --name revoc ghcr.io/revoc-ai/revoc:latest
+  --name revoc ghcr.io/revoc-ai/revoc:beta
 ```
 
 ## Basic Query Engine

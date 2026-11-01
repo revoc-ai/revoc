@@ -33,7 +33,7 @@ def setup_telemetry(app: FastAPI, settings: Settings) -> None:
     resource = Resource.create(
         {
             "service.name": "revoc-admin-api",
-            "service.version": "1.0.0",
+            "service.version": "0.1.0-beta.1",
             "deployment.environment": settings.environment,
         }
     )
