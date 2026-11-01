@@ -21,7 +21,8 @@ pub async fn health_handler() -> Json<serde_json::Value> {
 
 /// `GET /ready` — checks audit-store and policy-engine reachability with real
 /// connectivity probes (a minimal `list_events` query against the configured
-/// backend, and an `engine_type()`/config check for the policy engine).
+/// backend, and an `engine_type()`/config check for the policy engine), and
+/// reports kill-switch state and store health.
 pub async fn ready_handler(
     State(state): State<AppState>,
 ) -> (axum::http::StatusCode, Json<serde_json::Value>) {
@@ -44,12 +45,27 @@ pub async fn ready_handler(
         reasons.push("policy_engine_unavailable".to_owned());
     }
 
+    // Kill-switch store: with fail_closed an unreadable store blocks all
+    // traffic, so the instance is not ready; with local_only it serves on
+    // its last known state and reports itself degraded.
+    let kill_switch = state.kill_switch_service.status_json();
+    if state.kill_switch.store_lockout() {
+        reasons.push("kill_switch_store_unavailable".to_owned());
+    }
+    let degraded = !state.kill_switch_service.healthy();
+
     if reasons.is_empty() {
-        (axum::http::StatusCode::OK, Json(json!({"status": "ready"})))
+        (
+            axum::http::StatusCode::OK,
+            Json(json!({
+                "status": if degraded { "degraded" } else { "ready" },
+                "kill_switch": kill_switch,
+            })),
+        )
     } else {
         (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"status": "not_ready", "reasons": reasons})),
+            Json(json!({"status": "not_ready", "reasons": reasons, "kill_switch": kill_switch})),
         )
     }
 }

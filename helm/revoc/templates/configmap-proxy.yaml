@@ -21,6 +21,7 @@ data:
   REVOC_KILL_SWITCH__ENABLED: {{ .Values.killSwitch.enabled | quote }}
   REVOC_KILL_SWITCH__REDIS_CHANNEL: {{ .Values.killSwitch.redisChannel | quote }}
   REVOC_KILL_SWITCH__ON_REDIS_UNAVAILABLE: {{ .Values.killSwitch.onRedisUnavailable | quote }}
+  REVOC_KILL_SWITCH__RECONCILE_INTERVAL_MS: {{ .Values.killSwitch.reconcileIntervalMs | quote }}
 
   REVOC_DETECTION__NORMALIZE_BEFORE_SCAN: {{ .Values.detection.normalizeBeforeScan | quote }}
   REVOC_DETECTION__REGEX_ENABLED: {{ .Values.detection.regexEnabled | quote }}

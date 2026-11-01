@@ -16,7 +16,7 @@ use crate::{
         get_kill_switch_status, get_request_detail, get_rules, list_requests, validate_policy,
         DashboardState,
     },
-    auth::{require_auth, DashboardAuth},
+    auth::{require_admin, require_auth, DashboardAuth},
     live_feed::LiveFeedBus,
 };
 
@@ -31,6 +31,13 @@ static DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/ui/dist");
 /// ```
 pub fn dashboard_router(state: DashboardState, auth: DashboardAuth, bus: LiveFeedBus) -> Router {
     // API sub-router with optional auth middleware
+    // Kill-switch changes need the admin key on top of dashboard auth.
+    let admin = Router::new()
+        .route("/kill-switch/activate", post(activate_kill_switch))
+        .route("/kill-switch/deactivate", post(deactivate_kill_switch))
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(auth.clone(), require_admin));
+
     let api = Router::new()
         .route("/requests", get(list_requests))
         .route("/requests/:trace_id", get(get_request_detail))
@@ -38,10 +45,9 @@ pub fn dashboard_router(state: DashboardState, auth: DashboardAuth, bus: LiveFee
         .route("/costs", get(get_costs))
         .route("/rules", get(get_rules))
         .route("/kill-switch/status", get(get_kill_switch_status))
-        .route("/kill-switch/activate", post(activate_kill_switch))
-        .route("/kill-switch/deactivate", post(deactivate_kill_switch))
         .route("/policies/validate", post(validate_policy))
         .with_state(state)
+        .merge(admin)
         .layer(middleware::from_fn_with_state(auth, require_auth));
 
     // SSE live feed (no auth — same-origin only by network topology)

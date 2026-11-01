@@ -564,6 +564,12 @@ fn default_redis_channel() -> String {
 fn default_on_redis_unavailable() -> String {
     "local_only".into()
 }
+fn default_signing_key_env() -> String {
+    "REVOC_KILL_SWITCH_KEY".into()
+}
+fn default_reconcile_interval_ms() -> u64 {
+    2000
+}
 
 /// Emergency kill-switch subsystem (SPEC.md §9 D11).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -576,9 +582,21 @@ pub struct KillSwitchConfig {
     #[serde(default = "default_redis_channel")]
     pub redis_channel: String,
 
-    /// Behaviour when Redis is unavailable: `"local_only"` | `"fail"`.
+    /// Behaviour when the kill-switch store cannot be read:
+    /// `"local_only"` (default) keeps the last known state; `"fail_closed"`
+    /// blocks all traffic until the store is readable again.
     #[serde(default = "default_on_redis_unavailable")]
     pub on_redis_unavailable: String,
+
+    /// Environment variable holding the HMAC key that signs the kill-switch
+    /// document (default `"REVOC_KILL_SWITCH_KEY"`, at least 32 bytes).
+    /// Required when state is shared through Redis.
+    #[serde(default = "default_signing_key_env")]
+    pub signing_key_env: String,
+
+    /// How often each instance re-reads the stored state (default `2000` ms).
+    #[serde(default = "default_reconcile_interval_ms")]
+    pub reconcile_interval_ms: u64,
 }
 
 impl Default for KillSwitchConfig {
@@ -587,6 +605,8 @@ impl Default for KillSwitchConfig {
             enabled: default_kill_switch_enabled(),
             redis_channel: default_redis_channel(),
             on_redis_unavailable: default_on_redis_unavailable(),
+            signing_key_env: default_signing_key_env(),
+            reconcile_interval_ms: default_reconcile_interval_ms(),
         }
     }
 }

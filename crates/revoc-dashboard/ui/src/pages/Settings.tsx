@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
-import { getKillSwitchStatus, activateKillSwitch, deactivateKillSwitch, KillSwitchStatus } from '../api/client'
+import {
+  getKillSwitchStatus, activateKillSwitch, deactivateKillSwitch, killSwitchError, KillSwitchStatus,
+} from '../api/client'
 
 export default function Settings() {
   const [status, setStatus] = useState<KillSwitchStatus | null>(null)
   const [scope, setScope] = useState('global')
   const [target, setTarget] = useState('')
   const [reason, setReason] = useState('')
+  const [adminKey, setAdminKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -18,11 +21,11 @@ export default function Settings() {
   async function activate() {
     setBusy(true)
     try {
-      await activateKillSwitch(scope, reason, target || undefined)
+      await activateKillSwitch(scope, reason, adminKey, target || undefined)
       setMessage('Kill-switch activated')
       refresh()
-    } catch {
-      setMessage('Error activating kill-switch')
+    } catch (err) {
+      setMessage(`Activation failed: ${killSwitchError(err)}`)
     } finally {
       setBusy(false)
     }
@@ -31,11 +34,11 @@ export default function Settings() {
   async function deactivate() {
     setBusy(true)
     try {
-      await deactivateKillSwitch(scope, target || undefined)
+      await deactivateKillSwitch(scope, adminKey, target || undefined)
       setMessage('Kill-switch deactivated')
       refresh()
-    } catch {
-      setMessage('Error deactivating kill-switch')
+    } catch (err) {
+      setMessage(`Deactivation failed: ${killSwitchError(err)}`)
     } finally {
       setBusy(false)
     }
@@ -83,17 +86,25 @@ export default function Settings() {
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
+        <input
+          type="password"
+          autoComplete="off"
+          className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+          placeholder="Admin key (required to change the kill-switch)…"
+          value={adminKey}
+          onChange={(e) => setAdminKey(e.target.value)}
+        />
         <div className="flex gap-3">
           <button
             onClick={activate}
-            disabled={busy || !reason}
+            disabled={busy || !reason || !adminKey}
             className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
           >
             🛑 Activate
           </button>
           <button
             onClick={deactivate}
-            disabled={busy}
+            disabled={busy || !adminKey}
             className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40"
           >
             ✓ Deactivate

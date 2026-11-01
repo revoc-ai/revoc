@@ -1,7 +1,7 @@
 //! Emergency kill-switch admin handlers (internal port 8081 ONLY).
 
 use axum::{extract::State, http::StatusCode, Json};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use subtle::ConstantTimeEq;
 use tracing::warn;
 
@@ -16,19 +16,22 @@ use crate::{
 /// Minimum accepted admin key length; shorter keys are treated as unset.
 pub const MIN_ADMIN_KEY_LEN: usize = 16;
 
-/// Validate the `X-Admin-Key` header against the configured admin key.
+/// The operator admin key: `REVOC_ADMIN_KEY`, else `auth.admin_key`.
+/// `None` when unset or shorter than [`MIN_ADMIN_KEY_LEN`].
+pub fn configured_admin_key(config: &revoc_config::Config) -> Option<String> {
+    let key = std::env::var("REVOC_ADMIN_KEY").unwrap_or_else(|_| config.auth.admin_key.clone());
+    (key.len() >= MIN_ADMIN_KEY_LEN).then_some(key)
+}
+
+/// Validate an admin key against [`configured_admin_key`] in constant time.
 ///
 /// `REVOC_ADMIN_KEY` overrides `auth.admin_key` so operators can rotate the
 /// key without a config change. Client API keys (`REVOC_API_KEYS`) are never
-/// accepted. With no key configured (or one shorter than
-/// [`MIN_ADMIN_KEY_LEN`]) every request is rejected.
+/// accepted — startup refuses an admin key equal to one. With no usable key
+/// configured every request is rejected.
 pub fn validate_admin_key(provided: &str, state: &AppState) -> bool {
-    let expected =
-        std::env::var("REVOC_ADMIN_KEY").unwrap_or_else(|_| state.config.auth.admin_key.clone());
-    if expected.len() < MIN_ADMIN_KEY_LEN {
-        return false;
-    }
-    provided.as_bytes().ct_eq(expected.as_bytes()).into()
+    configured_admin_key(&state.config)
+        .is_some_and(|expected| provided.as_bytes().ct_eq(expected.as_bytes()).into())
 }
 
 /// Extract `X-Admin-Key` and validate it; `Err(401)` when missing or wrong.
@@ -61,115 +64,87 @@ pub struct DeactivateRequest {
     pub target: Option<String>,
 }
 
-#[derive(Serialize)]
-#[allow(dead_code)]
-pub struct StatusResponse {
-    pub global: bool,
-    pub by_org: Vec<String>,
-    pub by_caller: Vec<String>,
-}
-
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
+fn admin_key_header(headers: &axum::http::HeaderMap) -> &str {
+    headers
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+}
+
 /// `POST /internal/emergency/kill-switch/activate`
+///
+/// Traffic stops locally at once. `durable: false` in the response means the
+/// store could not be written; the activation stays in force here and is
+/// retried on every reconcile.
 pub async fn activate_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Json(req): Json<ActivateRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let admin_key = headers
-        .get("x-admin-key")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !validate_admin_key(admin_key, &state) {
-        warn!("Kill-switch activate: unauthorized attempt");
-        return Err(StatusCode::UNAUTHORIZED);
+    require_admin(&headers, &state)?;
+    let scope = KillSwitchScope::parse(&req.scope, req.target.as_deref())
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    if req.reason.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
     }
-
-    let scope = parse_scope(&req.scope, req.target.as_deref()).ok_or(StatusCode::BAD_REQUEST)?;
-
-    let entry = KillSwitchEntry {
-        activated_by: req.activated_by.clone(),
-        activated_at: chrono::Utc::now(),
-        reason: req.reason.clone(),
-        scope: scope.clone(),
-    };
-
-    state.kill_switch.activate(entry.clone());
-
-    // Publish to Redis for cross-instance propagation (~50ms)
-    crate::kill_switch::publish_kill_switch_message(
-        &state.config,
-        "activate",
-        Some(entry.clone()),
-        None,
-    );
-
-    // Persist to kill_switch_log (SPEC.md §23 Rule 26) — non-blocking failure.
-    let (scope_str, scope_value) = scope_log_parts(&scope);
-    if let Err(e) = state
-        .kill_switch_log
-        .log(
-            scope_str,
-            scope_value,
-            "activate",
-            &entry.activated_by,
-            Some(&entry.reason),
-        )
+    let outcome = state
+        .kill_switch_service
+        .activate(KillSwitchEntry {
+            activated_by: req.activated_by.clone(),
+            activated_at: chrono::Utc::now(),
+            reason: req.reason.clone(),
+            scope,
+        })
         .await
-    {
-        warn!(error = %e, "Failed to write kill_switch_log entry");
-    }
-
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     Ok(Json(serde_json::json!({
         "status": "activated",
         "scope": req.scope,
-        "reason": req.reason
+        "reason": req.reason,
+        "durable": outcome.durable,
+        "version": outcome.version,
     })))
 }
 
 /// `POST /internal/emergency/kill-switch/deactivate`
+///
+/// Lifted only once the change is in the durable store; otherwise 503 and
+/// the switch stays active everywhere.
 pub async fn deactivate_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Json(req): Json<DeactivateRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    let admin_key = headers
-        .get("x-admin-key")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !validate_admin_key(admin_key, &state) {
-        warn!("Kill-switch deactivate: unauthorized attempt");
-        return Err(StatusCode::UNAUTHORIZED);
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    require_admin(&headers, &state).map_err(|s| (s, Json(serde_json::json!({}))))?;
+    let scope = KillSwitchScope::parse(&req.scope, req.target.as_deref()).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
+    // The request carries no actor; record the stable, non-reversible
+    // identity derived from the admin key that authenticated it.
+    let actor = derive_caller_id(admin_key_header(&headers));
+    match state.kill_switch_service.deactivate(&scope, &actor).await {
+        Ok(outcome) => Ok(Json(serde_json::json!({
+            "status": "deactivated",
+            "scope": req.scope,
+            "durable": outcome.durable,
+            "version": outcome.version,
+        }))),
+        Err(e) => {
+            warn!(error = %e, "Kill-switch deactivation not persisted");
+            Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "status": "still_active",
+                    "error": "kill-switch store unavailable; nothing was lifted",
+                })),
+            ))
+        }
     }
-
-    let scope = parse_scope(&req.scope, req.target.as_deref()).ok_or(StatusCode::BAD_REQUEST)?;
-
-    state.kill_switch.deactivate(&scope);
-    crate::kill_switch::publish_kill_switch_message(
-        &state.config,
-        "deactivate",
-        None,
-        Some(scope.clone()),
-    );
-
-    // Persist to kill_switch_log (SPEC.md §23 Rule 26) — non-blocking failure.
-    // The deactivate request carries no `activated_by` field, so the actor is
-    // derived from the admin key that authenticated this request — the same
-    // stable, non-reversible derivation used for API-key callers.
-    let actor = derive_caller_id(admin_key);
-    let (scope_str, scope_value) = scope_log_parts(&scope);
-    if let Err(e) = state
-        .kill_switch_log
-        .log(scope_str, scope_value, "deactivate", &actor, None)
-        .await
-    {
-        warn!(error = %e, "Failed to write kill_switch_log entry");
-    }
-
-    Ok(Json(
-        serde_json::json!({"status": "deactivated", "scope": req.scope}),
-    ))
 }
 
 /// `GET /internal/emergency/kill-switch/status`
@@ -179,30 +154,9 @@ pub async fn status_handler(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     require_admin(&headers, &state)?;
     let snap = state.kill_switch.status_snapshot();
-    Ok(Json(serde_json::json!({
-        "global": snap.global,
-        "by_org": snap.by_org.iter().map(|(k, _)| k).collect::<Vec<_>>(),
-        "by_caller": snap.by_caller.iter().map(|(k, _)| k).collect::<Vec<_>>(),
-    })))
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Split a [`KillSwitchScope`] into the `(scope, scope_value)` pair stored in
-/// the `kill_switch_log` table (SPEC.md §15).
-fn scope_log_parts(scope: &KillSwitchScope) -> (&'static str, Option<&str>) {
-    match scope {
-        KillSwitchScope::Global => ("global", None),
-        KillSwitchScope::Org(id) => ("org", Some(id.as_str())),
-        KillSwitchScope::Caller(id) => ("caller", Some(id.as_str())),
-    }
-}
-
-fn parse_scope(scope_str: &str, target: Option<&str>) -> Option<KillSwitchScope> {
-    match scope_str {
-        "global" => Some(KillSwitchScope::Global),
-        "org" => target.map(|t| KillSwitchScope::Org(t.to_owned())),
-        "caller" => target.map(|t| KillSwitchScope::Caller(t.to_owned())),
-        _ => None,
-    }
+    let mut body = state.kill_switch_service.status_json();
+    body["by_org"] = serde_json::json!(snap.by_org.iter().map(|(k, _)| k).collect::<Vec<_>>());
+    body["by_caller"] =
+        serde_json::json!(snap.by_caller.iter().map(|(k, _)| k).collect::<Vec<_>>());
+    Ok(Json(body))
 }

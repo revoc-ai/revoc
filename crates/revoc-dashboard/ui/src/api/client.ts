@@ -135,12 +135,25 @@ export async function getKillSwitchStatus(): Promise<KillSwitchStatus> {
   return data
 }
 
-export async function activateKillSwitch(scope: string, reason: string, target?: string): Promise<void> {
-  await api.post('/kill-switch/activate', { scope, reason, target })
+// Changing the kill-switch requires the operator admin key, sent per request
+// and never stored. Client API keys only grant read access.
+export async function activateKillSwitch(
+  scope: string, reason: string, adminKey: string, target?: string,
+): Promise<void> {
+  await api.post('/kill-switch/activate', { scope, reason, target }, { headers: { 'X-Admin-Key': adminKey } })
 }
 
-export async function deactivateKillSwitch(scope: string, target?: string): Promise<void> {
-  await api.post('/kill-switch/deactivate', { scope, target })
+export async function deactivateKillSwitch(scope: string, adminKey: string, target?: string): Promise<void> {
+  await api.post('/kill-switch/deactivate', { scope, target }, { headers: { 'X-Admin-Key': adminKey } })
+}
+
+/** Human-readable reason for a failed kill-switch change. */
+export function killSwitchError(err: unknown): string {
+  const status = axios.isAxiosError(err) ? err.response?.status : undefined
+  if (status === 403) return 'Admin key missing or wrong'
+  if (status === 503) return 'Kill-switch store unavailable — nothing was lifted'
+  if (status === 400) return 'Invalid scope or target'
+  return 'Request failed'
 }
 
 export async function validatePolicy(yaml: string): Promise<PolicyValidationResult> {

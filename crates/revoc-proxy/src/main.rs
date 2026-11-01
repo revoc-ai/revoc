@@ -184,17 +184,20 @@ async fn serve(config_path: Option<String>) -> anyhow::Result<()> {
         warn!("🛑 Kill-switch is ACTIVE — all AI traffic will be blocked");
     }
 
-    // ── Start Redis kill-switch subscription ──────────────────────────────────
-    if cfg.kill_switch.enabled {
-        if let Ok(redis_url) =
-            std::env::var("REDIS_URL").or_else(|_| std::env::var(&cfg.cache.redis_url_env))
-        {
-            let ks = Arc::clone(&state.kill_switch);
-            tokio::spawn(async move {
-                kill_switch::subscribe_kill_switch(ks, &redis_url).await;
-            });
-        } else {
-            info!("Redis URL not set; kill-switch propagation is local-only");
+    // ── Kill-switch reconcile loop + Redis listener ──────────────────────────
+    state.kill_switch_service.spawn_background();
+    info!(
+        kill_switch = %state.kill_switch_service.status_json(),
+        "Kill-switch state loaded"
+    );
+
+    // Separate admin credentials: the admin key must never also be a client
+    // API key, or any client could operate the kill-switch.
+    if let Some(admin) = handlers::emergency::configured_admin_key(&cfg) {
+        if middleware::auth::load_api_keys(&state).contains(&admin) {
+            anyhow::bail!(
+                "the admin key is also configured as a client API key; use a separate admin key"
+            );
         }
     }
 

@@ -15,6 +15,9 @@ pub struct DashboardAuth {
     pub api_keys: Vec<String>,
     /// Auth mode: `"none"` | `"shared"`.
     pub mode: String,
+    /// Operator admin key required (in `X-Admin-Key`) to change the
+    /// kill-switch. `None` disables kill-switch changes from the dashboard.
+    pub admin_key: Option<String>,
 }
 
 impl DashboardAuth {
@@ -23,7 +26,28 @@ impl DashboardAuth {
         Self {
             api_keys,
             mode: mode.into(),
+            admin_key: None,
         }
+    }
+
+    /// Require `admin_key` for kill-switch changes.
+    #[must_use]
+    pub fn with_admin_key(mut self, admin_key: Option<String>) -> Self {
+        self.admin_key = admin_key.filter(|k| !k.is_empty());
+        self
+    }
+
+    /// Validate `X-Admin-Key` against the admin key in constant time.
+    /// Independent of `mode`: even with dashboard auth off, the kill-switch
+    /// can only be changed with the admin key.
+    pub fn is_admin(&self, headers: &HeaderMap) -> bool {
+        let Some(expected) = &self.admin_key else {
+            return false;
+        };
+        headers
+            .get("x-admin-key")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|k| k.as_bytes().ct_eq(expected.as_bytes()).into())
     }
 
     /// Validate the `Authorization` or `X-Api-Key` header using constant-time comparison.
@@ -68,6 +92,30 @@ pub async fn require_auth(
             axum::Json(serde_json::json!({
                 "error": "Unauthorized",
                 "message": "Valid API key required. Set Authorization: Bearer <key> or X-Api-Key: <key>."
+            })),
+        ))
+    }
+}
+
+/// Axum middleware for the kill-switch mutation routes: requires the operator
+/// admin key in `X-Admin-Key`, never a client API key.
+///
+/// # Errors
+/// `(StatusCode::FORBIDDEN, JSON body)` when the admin key is missing,
+/// wrong, or not configured.
+pub async fn require_admin(
+    axum::extract::State(auth): axum::extract::State<DashboardAuth>,
+    req: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, axum::Json<serde_json::Value>)> {
+    if auth.is_admin(req.headers()) {
+        Ok(next.run(req).await)
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({
+                "error": "Forbidden",
+                "message": "Changing the kill-switch requires the admin key in X-Admin-Key."
             })),
         ))
     }

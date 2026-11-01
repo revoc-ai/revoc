@@ -41,3 +41,10 @@ CREATE TABLE IF NOT EXISTS kill_switch_log (
     reason TEXT,
     timestamp TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Durable kill-switch state (SPEC.md §9 D11): one signed, versioned document.
+CREATE TABLE IF NOT EXISTS kill_switch_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL,
+    signed TEXT NOT NULL
+);

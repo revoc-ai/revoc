@@ -32,7 +32,7 @@ use crate::{
         llm::{chat_completions_handler, completions_handler},
         mcp::mcp_handler,
     },
-    kill_switch::KillSwitchState,
+    kill_switch::{KillSwitchService, KillSwitchState},
     middleware::{
         auth::{auth_middleware, load_api_keys},
         metrics_recorder::metrics_recorder_middleware,
@@ -147,6 +147,11 @@ impl SqliteAuditStore {
             .await
             .ok(); // Best-effort; table may already exist
         Ok(Self { pool })
+    }
+
+    /// The underlying connection pool (shared with the kill-switch store).
+    pub fn pool(&self) -> sqlx::SqlitePool {
+        self.pool.clone()
     }
 }
 
@@ -423,10 +428,10 @@ pub struct AppState {
     pub feed_bus: Arc<LiveFeedBus>,
     /// Audit event store.
     pub audit_store: Arc<dyn AuditStore + Send + Sync>,
-    /// Kill-switch activate/deactivate audit log writer (SPEC.md §23 Rule 26).
-    pub kill_switch_log: Arc<dyn KillSwitchLogWriter + Send + Sync>,
-    /// Emergency kill-switch state.
+    /// Emergency kill-switch state (hot path; owned by `kill_switch_service`).
     pub kill_switch: Arc<KillSwitchState>,
+    /// Durable, signed, reconciled kill-switch service.
+    pub kill_switch_service: Arc<KillSwitchService>,
     /// Per-caller session state.
     #[allow(dead_code)]
     pub session_store: Arc<dyn SessionStore + Send + Sync>,
@@ -499,14 +504,17 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
     // Live feed
     let feed_bus = Arc::new(LiveFeedBus::new(1024));
 
-    // Kill-switch
-    let kill_switch = Arc::new(KillSwitchState::new());
-
     // Audit store — also doubles as the kill-switch log writer, since both
     // persist to the same SQLite pool (SPEC.md §23 Rule 26).
     let sqlite_store = Arc::new(SqliteAuditStore::open(&cfg.storage.sqlite_path).await?);
     let audit_store: Arc<dyn AuditStore + Send + Sync> = sqlite_store.clone();
-    let kill_switch_log: Arc<dyn KillSwitchLogWriter + Send + Sync> = sqlite_store;
+    let kill_switch_log: Arc<dyn KillSwitchLogWriter + Send + Sync> = sqlite_store.clone();
+
+    // Kill-switch: state is loaded from the durable store before any traffic
+    // is served (SPEC.md §9 D11).
+    let kill_switch_service =
+        KillSwitchService::build(&cfg, kill_switch_log, sqlite_store.pool()).await?;
+    let kill_switch = kill_switch_service.state.clone();
 
     // Session store
     let session_store: Arc<dyn SessionStore + Send + Sync> = Arc::new(InMemorySessionStore::new(
@@ -532,8 +540,8 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
         metrics,
         feed_bus,
         audit_store,
-        kill_switch_log,
         kill_switch,
+        kill_switch_service,
         session_store,
         rate_limiter,
         pending_audit_writes,
@@ -620,16 +628,19 @@ pub fn build_routers(state: &AppState) -> AppRouters {
         // "shared" mode reuses the same operator-provisioned API keys as the
         // governed proxy (api_keys_file / api_keys_env) — a single shared
         // secret set for both planes, matching SPEC.md §13 [auth] config.
+        // Changing the kill-switch additionally requires the admin key —
+        // client API keys only ever grant read access to the dashboard.
         let dash_auth = revoc_dashboard::auth::DashboardAuth::new(
             state.config.dashboard.auth_mode.clone(),
             load_api_keys(state),
-        );
+        )
+        .with_admin_key(crate::handlers::emergency::configured_admin_key(
+            &state.config,
+        ));
         let dash_state = revoc_dashboard::api::DashboardState {
             store: state.audit_store.clone(),
             kill_switch: Arc::new(crate::kill_switch::DashboardKillSwitchAdapter::new(
-                state.kill_switch.clone(),
-                state.config.clone(),
-                state.kill_switch_log.clone(),
+                state.kill_switch_service.clone(),
             )),
         };
         Some(revoc_dashboard::handler::dashboard_router(
