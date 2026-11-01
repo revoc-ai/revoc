@@ -104,63 +104,77 @@ fn bucket_expr(window: AnalyticsWindow) -> &'static str {
     }
 }
 
+/// The bound `INSERT` for one event, shared by single and batch writes.
+fn pg_insert(
+    event: &AuditEvent,
+) -> sqlx::query::Query<'_, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    sqlx::query(
+        "INSERT INTO audit_events
+         (id, org_id, request_id, timestamp, caller_id, caller_team, environment,
+          decision, effective_action, enforcement_mode, violated_rules, finding_types,
+          model, provider, tool_name, request_type, governance_depth, prompt_tokens,
+          completion_tokens, estimated_cost_usd, duration_ms, detection_ms, policy_ms,
+          was_normalized, manifest_warnings, trace_id, policy_engine, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+                 $20,$21,$22,$23,$24::INTEGER,$25,$26,$27,$28)
+         ON CONFLICT (id) DO UPDATE SET
+          decision = EXCLUDED.decision,
+          effective_action = EXCLUDED.effective_action,
+          violated_rules = EXCLUDED.violated_rules,
+          finding_types = EXCLUDED.finding_types,
+          prompt_tokens = EXCLUDED.prompt_tokens,
+          completion_tokens = EXCLUDED.completion_tokens,
+          estimated_cost_usd = EXCLUDED.estimated_cost_usd,
+          duration_ms = EXCLUDED.duration_ms,
+          detection_ms = EXCLUDED.detection_ms,
+          policy_ms = EXCLUDED.policy_ms",
+    )
+    .bind(&event.id)
+    .bind(&event.org_id)
+    .bind(&event.request_id)
+    .bind(&event.timestamp)
+    .bind(&event.caller_id)
+    .bind(&event.caller_team)
+    .bind(&event.environment)
+    .bind(&event.decision)
+    .bind(&event.effective_action)
+    .bind(&event.enforcement_mode)
+    .bind(&event.violated_rules)
+    .bind(&event.finding_types)
+    .bind(&event.model)
+    .bind(&event.provider)
+    .bind(&event.tool_name)
+    .bind(&event.request_type)
+    .bind(event.governance_depth)
+    .bind(event.prompt_tokens)
+    .bind(event.completion_tokens)
+    .bind(event.estimated_cost_usd)
+    .bind(event.duration_ms)
+    .bind(event.detection_ms)
+    .bind(event.policy_ms)
+    .bind(event.was_normalized)
+    .bind(event.manifest_warnings)
+    .bind(&event.trace_id)
+    .bind(&event.policy_engine)
+    .bind(&event.created_at)
+}
+
 #[async_trait]
-#[allow(clippy::too_many_lines)] // insert_event binds every audit column
 impl AuditStore for PostgresAuditStore {
     async fn insert_event(&self, event: AuditEvent) -> Result<(), RevocError> {
-        sqlx::query(
-            "INSERT INTO audit_events
-             (id, org_id, request_id, timestamp, caller_id, caller_team, environment,
-              decision, effective_action, enforcement_mode, violated_rules, finding_types,
-              model, provider, tool_name, request_type, governance_depth, prompt_tokens,
-              completion_tokens, estimated_cost_usd, duration_ms, detection_ms, policy_ms,
-              was_normalized, manifest_warnings, trace_id, policy_engine, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-                     $20,$21,$22,$23,$24::INTEGER,$25,$26,$27,$28)
-             ON CONFLICT (id) DO UPDATE SET
-              decision = EXCLUDED.decision,
-              effective_action = EXCLUDED.effective_action,
-              violated_rules = EXCLUDED.violated_rules,
-              finding_types = EXCLUDED.finding_types,
-              prompt_tokens = EXCLUDED.prompt_tokens,
-              completion_tokens = EXCLUDED.completion_tokens,
-              estimated_cost_usd = EXCLUDED.estimated_cost_usd,
-              duration_ms = EXCLUDED.duration_ms,
-              detection_ms = EXCLUDED.detection_ms,
-              policy_ms = EXCLUDED.policy_ms",
-        )
-        .bind(&event.id)
-        .bind(&event.org_id)
-        .bind(&event.request_id)
-        .bind(&event.timestamp)
-        .bind(&event.caller_id)
-        .bind(&event.caller_team)
-        .bind(&event.environment)
-        .bind(&event.decision)
-        .bind(&event.effective_action)
-        .bind(&event.enforcement_mode)
-        .bind(&event.violated_rules)
-        .bind(&event.finding_types)
-        .bind(&event.model)
-        .bind(&event.provider)
-        .bind(&event.tool_name)
-        .bind(&event.request_type)
-        .bind(event.governance_depth)
-        .bind(event.prompt_tokens)
-        .bind(event.completion_tokens)
-        .bind(event.estimated_cost_usd)
-        .bind(event.duration_ms)
-        .bind(event.detection_ms)
-        .bind(event.policy_ms)
-        .bind(event.was_normalized)
-        .bind(event.manifest_warnings)
-        .bind(&event.trace_id)
-        .bind(&event.policy_engine)
-        .bind(&event.created_at)
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(db_err)
+        pg_insert(&event)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(db_err)
+    }
+
+    async fn insert_batch(&self, events: Vec<AuditEvent>) -> Result<(), RevocError> {
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        for event in &events {
+            pg_insert(event).execute(&mut *tx).await.map_err(db_err)?;
+        }
+        tx.commit().await.map_err(db_err)
     }
 
     async fn list_events(&self, filter: EventFilter) -> Result<(Vec<AuditEvent>, u64), RevocError> {

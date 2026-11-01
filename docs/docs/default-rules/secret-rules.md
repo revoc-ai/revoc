@@ -1,8 +1,13 @@
 # Secret Rules
 
+!!! note "Authoritative reference"
+    The [Rule Catalog](catalog.md) is generated from the code and lists every
+    pattern with the decision the engine actually makes. Where this page
+    differs from it, the catalog is correct.
+
 REVOC ships with 10 secret detection rules active by default. Secret rules are
 Security tier (3): detecting any secret in a request causes the entire request
-to be blocked. Secrets in responses are removed before forwarding to your application.
+to be blocked. A secret in a model response or tool result blocks it the same way.
 
 ## The Umbrella Rule: `secret_block_v1`
 
@@ -22,7 +27,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block (`secret_block_v1`)
 
-**Action on response:** Remove from output
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -34,7 +39,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -46,7 +51,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -58,7 +63,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -70,7 +75,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -82,7 +87,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -92,7 +97,7 @@ All individual secret rules below also feed into this umbrella.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -105,7 +110,7 @@ only JWTs that appear inside message content.
 
 **Action on request:** Block (if appears in message content)
 
-**Action on response:** Hash (SHA-256 prefix, e.g. `[JWT:sha256:a1b2c3...]`)
+**Action on response:** Block (`secret_block_v1`)
 
 ---
 
@@ -117,7 +122,7 @@ only JWTs that appear inside message content.
 
 **Action on request:** Block
 
-**Action on response:** Remove
+**Action on response:** Block (`secret_block_v1`)
 
 ## Why Requests Are Blocked (Not Redacted)
 

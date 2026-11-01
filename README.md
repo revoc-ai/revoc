@@ -91,8 +91,8 @@ export OPENAI_BASE_URL=http://localhost:8080
 
 | Feature | Status | Detail |
 |---|---|---|
-| PII detection (11 entity types) | ✅ | Regex + validators (Luhn, IBAN, ABA). Pattern-based: expect misses and false positives on free text |
-| Secret blocking (10 types) | ✅ | AWS keys, GitHub tokens, OpenAI/Anthropic keys, private keys, JWTs, passwords |
+| PII detection (16 patterns) | ✅ | Regex + validators (Luhn, IBAN, ABA). Pattern-based: expect misses and false positives on free text. Full list: [Rule Catalog](docs/docs/default-rules/catalog.md) |
+| Secret blocking (9 patterns) | ✅ | AWS keys, GitHub tokens, OpenAI/Anthropic keys, private keys, JWTs, passwords |
 | Prompt injection detection | ⚠️ | Phrase patterns only; paraphrased or translated injections are not caught |
 | SQL mutation blocking | ✅ | DROP, TRUNCATE, ALTER TABLE, DELETE without WHERE (regex, not a SQL parser) |
 | SSRF / path traversal | ⚠️ | Literal internal IPs and `../`; encoded or alternate IP forms are not canonicalised yet |
@@ -105,7 +105,7 @@ export OPENAI_BASE_URL=http://localhost:8080
 | Shadow mode | ✅ | Observe without blocking |
 | Streaming governance | ✅ | Per-choice hold-back scanning with in-stream redaction (OpenAI and Anthropic formats); tool calls held until governed; `stream.buffer_output = true` inspects the whole response before sending |
 | Compliance profiles (HIPAA / PCI-DSS / GDPR) | ⚠️ | Example policy bundles only. REVOC is not certified for, and does not by itself make you compliant with, any framework |
-| Postgres audit store / Redis shared state | ❌ | Audit events are written to SQLite today |
+| Postgres audit store / Redis shared state | ✅ | Postgres audit (shared with the admin API), Redis sessions and kill-switch state; batched audit writer |
 | Calls home / telemetry | ❌ | REVOC makes zero outbound connections to revoc.io |
 
 ---
@@ -181,11 +181,29 @@ X-Revoc-Timing: detection=2ms,policy=0ms,redaction=1ms,upstream=312ms,total=315m
 
 ## Performance
 
-Targets (SPEC.md §19), checked with criterion micro-benchmarks in `benches/`:
+End-to-end HTTP latency is measured on every CI run by `scripts/proof.sh`
+(k6 against a release build in front of a stub upstream). The job fails if
+any scenario's P95 is 10 ms or more, or its P99 is 25 ms or more. One local run
+at 200 req/s per scenario (12 CPUs):
+
+| Scenario | P50 | P95 | P99 |
+|---|---:|---:|---:|
+| Chat, clean | 1.61 ms | 2.20 ms | 4.85 ms |
+| Chat with PII (redacted / blocked) | 1.32 ms | 1.68 ms | 3.51 ms |
+| MCP `tools/call` | 1.79 ms | 2.45 ms | 5.25 ms |
+| Embeddings | 1.39 ms | 1.95 ms | 4.08 ms |
+
+These are client-side, end-to-end figures, so they are an upper bound on proxy
+overhead. [CLAIMS.md](CLAIMS.md) says how each figure is measured and what it
+does not cover. The same run checks that no audit event is dropped, that the
+proxy contacts nothing but loopback, and that no PII or key appears in its
+trace-level logs.
+
+In-process targets (SPEC.md §19), as criterion micro-benchmarks in `benches/`
+(not gated in CI):
 
 | Benchmark | Target |
 |---|---|
-| P95 proxy overhead (proxy-only) | < 10ms |
 | Regex detection — 4KB, no PII | > 100K req/s |
 | Regex detection — 4KB, 3 PII findings | > 50K req/s |
 | Full pipeline (regex + policy + redaction) | > 40K req/s |
@@ -193,9 +211,7 @@ Targets (SPEC.md §19), checked with criterion micro-benchmarks in `benches/`:
 | Normalization overhead | < 0.5ms |
 | Manifest analysis (10 tools) | < 1ms |
 
-Run them on your own hardware with `cargo bench -p revoc-benches`. These are
-in-process numbers; end-to-end HTTP latency (P50/P95/P99 under load) has not
-been published yet.
+Run them on your own hardware with `cargo bench -p revoc-benches`.
 
 ---
 

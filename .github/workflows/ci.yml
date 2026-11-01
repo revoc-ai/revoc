@@ -89,6 +89,42 @@ jobs:
           grep -q "test result: ok" /tmp/storage.txt
           ! grep -q "skipped:" /tmp/storage.txt
 
+  # ── Proof — HTTP load test, audit completeness, no egress, no PII in logs ───
+  # Release build behind a stub upstream; see scripts/proof.sh and CLAIMS.md.
+  proof:
+    name: Proof / load + egress + PII
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ubuntu-cargo-proof-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ubuntu-cargo-
+      - uses: grafana/setup-k6-action@v1
+      - name: Install strace
+        run: sudo apt-get update -q && sudo apt-get install -y -q strace
+      - name: Build release binaries
+        run: cargo build --release -p revoc-proxy -p revoc-benches --bin revoc-proxy --bin stub-upstream
+      - name: Proof run
+        run: bash scripts/proof.sh
+      - name: Upload proof report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-report
+          path: |
+            target/proof/report.md
+            target/proof/report.json
+            target/proof/latency/k6-summary.json
+            target/proof/latency/ready.json
+            target/proof/evidence/strace.log
+          if-no-files-found: warn
+
   # ── REVOC D8 — normalization must have zero FAILED tests ─────────────────────
   check-normalization:
     name: Rust / normalization (D8)

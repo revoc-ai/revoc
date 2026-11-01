@@ -1,5 +1,10 @@
 # Security Rules
 
+!!! note "Authoritative reference"
+    The [Rule Catalog](catalog.md) is generated from the code and lists every
+    pattern with the decision the engine actually makes. Where this page
+    differs from it, the catalog is correct.
+
 REVOC ships with 10 security rules active by default. All security rules are
 Security tier (3): they cannot be overridden or disabled by any custom policy rule,
 compliance profile, or allow-list entry. If a security-tier block fires, it wins

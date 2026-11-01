@@ -14,6 +14,7 @@ mod depth;
 mod handlers;
 mod kill_switch;
 mod middleware;
+mod rules_catalog;
 mod shutdown;
 mod storage;
 mod streaming;
@@ -62,6 +63,8 @@ enum Command {
         #[arg(long)]
         label: Option<String>,
     },
+    /// Print the generated rule catalog (Markdown) to stdout.
+    ListRules,
     /// Print version information.
     Version,
     /// Run a quick performance smoke test.
@@ -114,6 +117,10 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Serve { config } => serve(config).await,
         Command::Migrate { config } => migrate(config.as_ref()).await,
+        Command::ListRules => {
+            print!("{}", rules_catalog::markdown());
+            Ok(())
+        }
         Command::ValidateConfig { config } => {
             validate_config(config.as_ref());
             Ok(())

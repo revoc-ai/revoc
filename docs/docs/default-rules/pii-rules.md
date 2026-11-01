@@ -1,5 +1,10 @@
 # PII Rules
 
+!!! note "Authoritative reference"
+    The [Rule Catalog](catalog.md) is generated from the code and lists every
+    pattern with the decision the engine actually makes. Where this page
+    differs from it, the catalog is correct.
+
 REVOC ships with 11 PII detection rules active by default. These rules detect
 personally identifiable information in requests and responses and either mask
 or remove it before it reaches the LLM or your application.

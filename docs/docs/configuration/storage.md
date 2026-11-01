@@ -63,8 +63,20 @@ Audit writes never block the request path:
 
 1. Each governed request builds an `AuditEvent` (entity types, rule IDs and
    timings — never matched values).
-2. The write runs on a background task with up to two retries.
-3. On shutdown the proxy waits for in-flight writes to finish before exiting.
+2. The event goes onto a bounded in-memory queue (100,000 events); the
+   request does not wait.
+3. A single writer task takes whatever is queued, up to
+   `audit_write_batch_size` events, and stores it in one transaction. Under
+   load, batches form on their own; at low load each event is written at once.
+4. A failed batch is retried 3 times, pausing `audit_write_interval_ms`
+   and doubling each time. Only then are its events counted as dropped.
+5. On shutdown the proxy waits for the queue to drain before exiting.
+
+`/ready` reports the writer's counters under `audit` (`queued`, `written`,
+`dropped`, `batches`). It reports `"status": "degraded"` once any event has
+been dropped. SQLite runs in WAL mode, so dashboard reads don't block writes.
+The proof run (`scripts/proof.sh`, see [CLAIMS.md](https://github.com/revoc-ai/revoc/blob/main/CLAIMS.md))
+fails if any event is dropped under its load test.
 
 ### Every exit is audited
 

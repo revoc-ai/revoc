@@ -5,6 +5,10 @@ edition = "2021"
 license = "Apache-2.0"
 publish = false
 
+[[bin]]
+name = "stub-upstream"
+path = "src/bin/stub_upstream.rs"
+
 [[bench]]
 name = "detector_throughput"
 harness = false
@@ -26,6 +30,7 @@ revoc-pipeline  = { path = "../crates/revoc-pipeline" }
 revoc-policy    = { path = "../crates/revoc-policy" }
 revoc-redaction = { path = "../crates/revoc-redaction" }
 tokio           = { workspace = true }
+axum            = { workspace = true }
 bytes           = { workspace = true }
 serde_json      = { workspace = true }
 uuid            = { workspace = true }
