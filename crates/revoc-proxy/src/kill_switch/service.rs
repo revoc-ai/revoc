@@ -33,7 +33,7 @@ use tracing::{info, warn};
 
 use revoc_core::RevocError;
 
-use super::store::{KillSwitchStore, RedisKillSwitchStore, SqliteKillSwitchStore};
+use super::store::{KillSwitchStore, RedisKillSwitchStore};
 use super::{KillSwitchDoc, KillSwitchEntry, KillSwitchScope, KillSwitchState};
 use crate::app::KillSwitchLogWriter;
 
@@ -86,7 +86,8 @@ impl KillSwitchService {
     /// Choose the store, validate settings and load the current state.
     ///
     /// Redis is used when `REDIS_URL` (or the `cache.redis_url_env`
-    /// variable) is set; otherwise the local `SQLite` database.
+    /// variable) is set; otherwise `audit_db`, the store over the audit
+    /// database (`SQLite`, or Postgres shared by every instance).
     ///
     /// # Errors
     /// [`RevocError::Configuration`] for an unknown `on_redis_unavailable`
@@ -95,7 +96,7 @@ impl KillSwitchService {
     pub async fn build(
         cfg: &revoc_config::Config,
         log: Arc<dyn KillSwitchLogWriter + Send + Sync>,
-        pool: sqlx::SqlitePool,
+        audit_db: Arc<dyn KillSwitchStore>,
     ) -> Result<Arc<Self>, RevocError> {
         let ks = &cfg.kill_switch;
         let fail_closed = match ks.on_redis_unavailable.as_str() {
@@ -135,7 +136,14 @@ impl KillSwitchService {
                 Some((url, ks.redis_channel.clone())),
             )
         } else {
-            (Arc::new(SqliteKillSwitchStore::new(pool)), None)
+            if audit_db.kind() == "postgres" && key.is_none() {
+                return Err(RevocError::Configuration(format!(
+                    "kill-switch state is shared through Postgres, so {} must be set \
+                     (at least {MIN_SIGNING_KEY_LEN} bytes, same on every instance)",
+                    ks.signing_key_env
+                )));
+            }
+            (audit_db, None)
         };
 
         let interval = Duration::from_millis(ks.reconcile_interval_ms.max(100));

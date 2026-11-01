@@ -134,6 +134,16 @@ impl AnalyticsWindow {
         }
     }
 
+    /// Length of this window.
+    pub fn duration(&self) -> chrono::Duration {
+        match self {
+            Self::Hour1 => chrono::Duration::hours(1),
+            Self::Hour24 => chrono::Duration::hours(24),
+            Self::Day7 => chrono::Duration::days(7),
+            Self::Day30 => chrono::Duration::days(30),
+        }
+    }
+
     /// `SQLite` `datetime('now', <modifier>)` modifier marking the start of
     /// this window — used to filter `audit_events.created_at >= ...`.
     pub fn sqlite_modifier(&self) -> &'static str {

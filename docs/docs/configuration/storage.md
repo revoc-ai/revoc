@@ -34,25 +34,55 @@ sqlite_path = "/var/lib/revoc/audit.db"
 ```toml
 [storage]
 backend = "postgres"
-postgres_url_env = "DATABASE_URL"
+postgres_url_env = "DATABASE_URL"   # name of the env var holding the URL
 pool_size = 20
+migrations_auto_run = true          # create tables on startup
 ```
 
 ```bash
 DATABASE_URL=postgres://revoc:password@postgres:5432/revoc
 ```
 
+Use Postgres when more than one proxy instance runs: every instance writes to
+the same `audit_events` table, and the admin API and dashboard read it.
+
+- The proxy refuses to start when `DATABASE_URL` is unset or the database is
+  unreachable; it does not serve traffic it cannot audit.
+- With `migrations_auto_run = true` the proxy creates `audit_events`,
+  `kill_switch_log` and `kill_switch_state` if they are missing. Instances
+  starting together take an advisory lock so they don't race. The table
+  layout matches the admin API's migration, so either service can create it.
+- Without Redis, kill-switch state is kept in `kill_switch_state` and every
+  instance reconciles against it. Because the database is shared, the state
+  is signed: `REVOC_KILL_SWITCH_KEY` (at least 32 bytes, the same on every
+  instance) is required. The Helm chart generates one.
+
 ## Audit Write Pipeline
 
-Audit events are written asynchronously in batches to avoid blocking the request path:
+Audit writes never block the request path:
 
-1. After each governed request, an `AuditEvent` is constructed and sent to an async channel
-2. A background task collects up to `audit_write_batch_size` events
-3. Every `audit_write_interval_ms` milliseconds, the batch is written in a single transaction
-4. On shutdown, the batch writer flushes any pending events before the process exits
+1. Each governed request builds an `AuditEvent` (entity types, rule IDs and
+   timings — never matched values).
+2. The write runs on a background task with up to two retries.
+3. On shutdown the proxy waits for in-flight writes to finish before exiting.
 
-**Batch defaults:** 100 events per batch, 100ms interval — at 1000 req/s, each batch
-is flushed in 10ms intervals. P99 write latency < 5ms.
+### Every exit is audited
+
+Every authenticated request on `/v1/chat/completions`, `/v1/completions`,
+`/v1/embeddings` and `/mcp` leaves at least one audit record. That includes
+exits that end before policy runs: kill switch, depth limit, malformed body,
+rate limit (429), upstream failure and fail-closed governance errors. Such
+exits get a minimal record:
+
+| Field | Value |
+|---|---|
+| `decision` / `effective_action` | `reject` (4xx), `error` (5xx), `block` (403), otherwise the response's `X-Revoc-Decision` |
+| `policy_engine` | `exit:<status>`, e.g. `exit:503` |
+| `trace_id`, `violated_rules` | from `X-Revoc-Trace-ID` / `X-Revoc-Rules` when present |
+
+The body is never read for these records. Unauthenticated (401) requests are
+counted in metrics but not audited, so callers without a key cannot fill the
+audit store.
 
 ## Audit Retention
 
@@ -90,30 +120,45 @@ REDIS_URL=redis://redis:6379
 ```
 
 Redis enables:
-- Policy decision cache shared across all proxy instances
-- Session state shared across instances (required for `session_data_exfil_v1`)
-- Kill-switch propagation via pub/sub
+- Session state shared across instances, stored as `revoc:session:<org>:<caller>`
+  with the `[session] ttl_secs` TTL (needed for `session_data_exfil_v1` when
+  more than one instance runs)
+- Kill-switch state and propagation via pub/sub
+
+### Session recording
+
+LLM and MCP traffic from one caller share a session
+(`<org_id>:<caller_id>`). Each MCP `tools/call` records:
+
+- the tool name, keeping the last 256 per session
+- rows returned: the largest array in `structuredContent`, or in a top-level
+  `rows`/`data`/`results`, otherwise the number of `content` items
+- PII entity *types* seen in arguments and results, never values
+- whether the tool sends data out (its name contains `http`, `fetch`,
+  `request`, `post`, `send`, `mail`, `upload`, `webhook`, `slack`, `publish`,
+  `notify`, `sms` or `tweet`)
+
+The call is added to the session before policy runs. A send that completes
+the pattern (more than 500 rows read, PII seen, external send) is blocked by
+`session_data_exfil_v1` before it reaches the tool server.
 
 ## Database Schema
 
-REVOC applies migrations automatically on startup (`migrations_auto_run = true`).
-The schema is defined in `admin-api/alembic/versions/001_initial_schema.py` and
-the Rust migration files under `sqlx/migrations/`.
+The proxy creates its own tables on startup (`migrations_auto_run = true`), from
+`crates/revoc-proxy/sql/schema.sql` (SQLite) or `sql/schema_postgres.sql`
+(Postgres). The admin API's alembic migration
+(`admin-api/alembic/versions/001_initial_schema.py`) creates the same audit
+tables plus its own.
 
-Run migrations manually:
+Create the proxy tables without starting it:
 
 ```bash
 revoc-proxy migrate --config configs/revoc.toml
 ```
 
-Tables created:
-
-| Table | Purpose |
-|---|---|
-| `organizations` | Org registry |
-| `policy_bundles` | Versioned policy YAML + compiled Rego |
-| `policy_audit_log` | Who changed which policy and when |
-| `audit_events` | Governance decisions — one row per governed request |
-| `kill_switch_log` | Kill-switch activation/deactivation log |
-| `users` | Dashboard and admin API users |
-| `api_keys` | Hashed API keys with caller metadata |
+| Table | Created by | Purpose |
+|---|---|---|
+| `audit_events` | proxy, admin API | Governance decisions: one or more rows per request |
+| `kill_switch_log` | proxy, admin API | Kill-switch activation/deactivation log |
+| `kill_switch_state` | proxy | Signed, versioned kill-switch document (when not using Redis) |
+| `organizations`, `policy_bundles`, `policy_audit_log`, `users`, `api_keys` | admin API | Admin plane |

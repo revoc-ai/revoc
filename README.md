@@ -288,7 +288,6 @@ Known gaps being worked on before 1.0:
 - Streamed text is held back by `stream.hold_back_chars` (128); a sensitive
   pattern longer than that can have its start released before it is matched.
 - All API keys map to a single org; there is no tenant-scoped key registry yet.
-- Audit storage is SQLite only on the proxy; Postgres is used by the admin API.
 - Detection is pattern-based; there is no labelled evaluation corpus or
   published precision/recall yet.
 

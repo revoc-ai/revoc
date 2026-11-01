@@ -12,7 +12,7 @@ use tracing::{info, warn, Instrument};
 
 use revoc_core::{
     Action, CallerContext, ChatMessage, EnforcementMode, PiiEntityType, PolicyEngine, PolicyInput,
-    Redactor, RequestType, RevocErrorResponse, SessionState, TokenUsage,
+    Redactor, RequestType, RevocErrorResponse, TokenUsage,
 };
 use revoc_dashboard::GovernanceEvent;
 
@@ -141,8 +141,7 @@ async fn run_llm_handler(
 
     // ── Step 4: Extract context ───────────────────────────────────────────────
     let governance_depth = depth;
-    let session_id = format!("{}:{}", caller.org_id, caller.caller_id);
-    let existing_session = state.session_store.get(&session_id).await;
+    let existing_session = crate::storage::session::load(&state, &caller).await;
     let session_state = existing_session.clone();
 
     // ── Step 5: Enforcement mode ──────────────────────────────────────────────
@@ -517,26 +516,15 @@ async fn run_llm_handler(
     }
 
     // Step 17: update and persist session state
-    let updated_session = update_session_state(
-        existing_session,
-        &session_id,
-        &caller,
-        &findings,
-        request_type == RequestType::McpToolCall,
+    crate::storage::session::spawn_persist(
+        &state,
+        crate::storage::session::record(
+            existing_session,
+            &caller,
+            &findings,
+            &crate::storage::session::SessionActivity::default(),
+        ),
     );
-    {
-        let store = state.session_store.clone();
-        let sid = session_id.clone();
-        let sess = updated_session.clone();
-        let ttl = state.config.session.ttl_secs;
-        if state.config.session.enabled {
-            tokio::spawn(async move {
-                if let Err(e) = store.set(&sid, sess, ttl).await {
-                    warn!(error = %e, "Failed to persist session state");
-                }
-            });
-        }
-    }
 
     // Steps 19–20 inputs, shared by the streaming and non-streaming paths.
     let decision_str = action_to_str(&effective.effective_action);
@@ -810,43 +798,6 @@ fn model_pricing_per_1k(model: &str) -> (f64, f64) {
         // Generic fallback rate for unrecognized/local models.
         (0.001, 0.002)
     }
-}
-
-/// Step 17 — fold this request's findings into the caller's session state and
-/// return the updated record to persist. Creates a fresh session on first
-/// contact. `external_send_attempted` is set when this request is itself an
-/// MCP tool call (a vector for data leaving the governed boundary); REVOC's
-/// own LLM completions are not external sends.
-fn update_session_state(
-    existing: Option<SessionState>,
-    session_id: &str,
-    caller: &CallerContext,
-    findings: &[revoc_core::Finding],
-    is_external_send: bool,
-) -> SessionState {
-    let now = chrono::Utc::now();
-    let mut session = existing.unwrap_or_else(|| SessionState {
-        session_id: session_id.to_owned(),
-        org_id: caller.org_id.clone(),
-        caller_id: caller.caller_id.clone(),
-        tools_called: Vec::new(),
-        total_rows_read: 0,
-        pii_entities_seen: std::collections::HashSet::new(),
-        external_send_attempted: false,
-        started_at: now,
-        last_active: now,
-    });
-
-    for finding in findings {
-        if let Some(entity) = &finding.pii_entity {
-            session.pii_entities_seen.insert(entity.to_string());
-        }
-    }
-    if is_external_send {
-        session.external_send_attempted = true;
-    }
-    session.last_active = now;
-    session
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

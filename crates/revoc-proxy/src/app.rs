@@ -32,14 +32,19 @@ use crate::{
         llm::{chat_completions_handler, completions_handler},
         mcp::mcp_handler,
     },
-    kill_switch::{KillSwitchService, KillSwitchState},
+    kill_switch::{
+        store::{KillSwitchStore, PostgresKillSwitchStore, SqliteKillSwitchStore},
+        KillSwitchService, KillSwitchState,
+    },
     middleware::{
+        audit_exit::audit_exit_middleware,
         auth::{auth_middleware, load_api_keys},
         metrics_recorder::metrics_recorder_middleware,
         rate_limit::{rate_limit_middleware, RateLimiter},
         request_id::request_id_middleware,
         security::security_middleware,
     },
+    storage::{PostgresAuditStore, RedisSessionStore},
     upstream::retry::with_retry,
     upstream::{client::UpstreamClient, router::UpstreamRouter},
 };
@@ -457,6 +462,7 @@ impl AppState {
     pub fn spawn_audit_write(&self, event: AuditEvent) {
         let store = self.audit_store.clone();
         let pending = self.pending_audit_writes.clone();
+        crate::middleware::audit_exit::mark_audited();
         pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         tokio::spawn(async move {
             // Retry up to 2 times (3 total attempts) with exponential backoff
@@ -504,22 +510,25 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
     // Live feed
     let feed_bus = Arc::new(LiveFeedBus::new(1024));
 
-    // Audit store — also doubles as the kill-switch log writer, since both
-    // persist to the same SQLite pool (SPEC.md §23 Rule 26).
-    let sqlite_store = Arc::new(SqliteAuditStore::open(&cfg.storage.sqlite_path).await?);
-    let audit_store: Arc<dyn AuditStore + Send + Sync> = sqlite_store.clone();
-    let kill_switch_log: Arc<dyn KillSwitchLogWriter + Send + Sync> = sqlite_store.clone();
+    // Audit store — also the kill-switch log writer and, without Redis, the
+    // kill-switch state store, since all three live in the same database
+    // (SPEC.md §15, §23 Rule 26).
+    let (audit_store, kill_switch_log, kill_switch_db) = open_audit_db(&cfg).await?;
 
     // Kill-switch: state is loaded from the durable store before any traffic
     // is served (SPEC.md §9 D11).
     let kill_switch_service =
-        KillSwitchService::build(&cfg, kill_switch_log, sqlite_store.pool()).await?;
+        KillSwitchService::build(&cfg, kill_switch_log, kill_switch_db).await?;
     let kill_switch = kill_switch_service.state.clone();
 
-    // Session store
-    let session_store: Arc<dyn SessionStore + Send + Sync> = Arc::new(InMemorySessionStore::new(
-        Duration::from_secs(cfg.session.ttl_secs),
-    ));
+    // Session store — Redis when configured, so every instance sees the
+    // same session (SPEC.md §11).
+    let session_store: Arc<dyn SessionStore + Send + Sync> = match redis_url(&cfg) {
+        Some(url) => Arc::new(RedisSessionStore::new(&url)?),
+        None => Arc::new(InMemorySessionStore::new(Duration::from_secs(
+            cfg.session.ttl_secs,
+        ))),
+    };
 
     // Concurrency limits: per caller, per org (tenant) and process-wide
     let rate_limiter = RateLimiter::new(
@@ -546,6 +555,60 @@ pub async fn build_app_state(cfg: Arc<Config>) -> Result<AppState, anyhow::Error
         rate_limiter,
         pending_audit_writes,
     })
+}
+
+type AuditDb = (
+    Arc<dyn AuditStore + Send + Sync>,
+    Arc<dyn KillSwitchLogWriter + Send + Sync>,
+    Arc<dyn KillSwitchStore>,
+);
+
+/// Open the audit database selected by `storage.backend`.
+///
+/// # Errors
+/// An unknown backend, a missing Postgres URL, or a connection failure:
+/// the proxy does not serve traffic it cannot audit.
+async fn open_audit_db(cfg: &Config) -> Result<AuditDb, anyhow::Error> {
+    match cfg.storage.backend.as_str() {
+        "sqlite" => {
+            let store = Arc::new(SqliteAuditStore::open(&cfg.storage.sqlite_path).await?);
+            let ks = Arc::new(SqliteKillSwitchStore::new(store.pool()));
+            Ok((store.clone(), store, ks))
+        }
+        "postgres" => {
+            let env = &cfg.storage.postgres_url_env;
+            let url = std::env::var(env)
+                .ok()
+                .filter(|u| !u.is_empty())
+                .ok_or_else(|| {
+                    RevocError::Configuration(format!(
+                        "storage.backend is \"postgres\" but {env} is not set"
+                    ))
+                })?;
+            let store = Arc::new(
+                PostgresAuditStore::connect(
+                    &url,
+                    cfg.storage.pool_size,
+                    cfg.storage.migrations_auto_run,
+                )
+                .await?,
+            );
+            let ks = Arc::new(PostgresKillSwitchStore::new(store.pool()));
+            Ok((store.clone(), store, ks))
+        }
+        other => Err(RevocError::Configuration(format!(
+            "storage.backend must be \"sqlite\" or \"postgres\", got \"{other}\""
+        ))
+        .into()),
+    }
+}
+
+/// Redis URL from `REDIS_URL` or the `cache.redis_url_env` variable.
+fn redis_url(cfg: &Config) -> Option<String> {
+    std::env::var("REDIS_URL")
+        .or_else(|_| std::env::var(&cfg.cache.redis_url_env))
+        .ok()
+        .filter(|u| !u.is_empty())
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -580,6 +643,12 @@ pub fn build_routers(state: &AppState) -> AppRouters {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
+        ))
+        // Inside auth (needs the caller), outside rate limiting (so 429s
+        // are audited): every authenticated exit leaves a record.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            audit_exit_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             state.clone(),

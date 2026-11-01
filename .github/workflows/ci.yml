@@ -47,6 +47,48 @@ jobs:
       - name: doc
         run: cargo doc --workspace --no-deps
 
+  # ── Storage backends — Postgres audit store + Redis sessions/kill-switch ─────
+  check-storage:
+    name: Rust / storage backends
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: revoc
+          POSTGRES_PASSWORD: revoc
+          POSTGRES_DB: revoc
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U revoc" --health-interval 2s
+          --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s
+          --health-timeout 5s --health-retries 20
+    env:
+      REVOC_TEST_POSTGRES_URL: postgres://revoc:revoc@localhost:5432/revoc
+      REVOC_TEST_REDIS_URL: redis://localhost:6379
+      REVOC_TEST_KILL_SWITCH_KEY: ci-only-kill-switch-signing-key-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ubuntu-cargo-storage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ubuntu-cargo-
+      - name: Storage tests (no skips)
+        run: |
+          cargo test -p revoc-proxy -- storage_tests --nocapture 2>&1 | tee /tmp/storage.txt
+          grep -q "test result: ok" /tmp/storage.txt
+          ! grep -q "skipped:" /tmp/storage.txt
+
   # ── REVOC D8 — normalization must have zero FAILED tests ─────────────────────
   check-normalization:
     name: Rust / normalization (D8)

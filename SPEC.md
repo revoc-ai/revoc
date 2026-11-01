@@ -1130,7 +1130,7 @@ Step 14: Set X-Revoc-Depth: {depth+1} on upstream request
 Step 15: If stream=true: stream governor (§12) — per-choice hold-back, in-stream redaction, tool calls held until governed
          If stream=false: buffer full response, output governance
 Step 16: Extract TokenUsage. Compute estimated_cost_usd.
-Step 17: Update session state in Redis/memory.
+Step 17: Update session state in Redis/memory (key "<org_id>:<caller_id>", shared with MCP).
 Step 18: If upstream 4xx/5xx → forward verbatim + add only X-Revoc-Trace-ID header
 Step 19: Set ALL response headers (sanitize every value: strip \r\n\0):
          X-Revoc-Trace-ID, X-Revoc-Decision, X-Revoc-Dashboard (NON-NEGOTIABLE),
@@ -1154,16 +1154,30 @@ Step  4: tools/list or resources/list:
            Return (optionally remove dangerous tools if auto_disable=true)
 Step  5: sampling/createMessage → route to LLM handler (depth+1)
 Step  6: tools/call / resources/read: validate server in trusted registry
-Step  7: Run detection engine on tool arguments
-Step  8: Evaluate policy (conflict::resolve())
+Step  7: Run detection engine on tool arguments.
+           Fold the call into the caller's session (tool name, PII entity types,
+           external-send flag) before policy, so session_data_exfil_v1 judges the send.
+Step  8: Evaluate policy (conflict::resolve()) with session_state
 Step  9: BLOCK: return McpBlockResponse (JSON-RPC error -32603, HTTP 200 body)
            Set X-Revoc-Block: true, X-Revoc-Dashboard, X-Revoc-Trace-ID
            UPSTREAM MCP SERVER MUST NEVER RECEIVE A BLOCKED REQUEST
 Step 10: ALLOW: forward to upstream MCP server. Set X-Revoc-Depth on upstream.
 Step 11: Receive tool result. Run detection on result (bidirectional governance).
+           Add rows read and result PII types to the session; persist it.
            Redact PII before returning to AI client.
 Step 12: Write audit, publish SSE, record metrics, close span
 ```
+
+### Exit-path audit (all governed routes)
+
+Every authenticated request leaves at least one `audit_events` row. A
+middleware between auth and rate limiting runs each request in a task-local
+scope; `AppState::spawn_audit_write` marks it. A response that returns
+unmarked (kill switch, depth limit, parse error, 429, upstream failure,
+fail-closed error) gets a minimal row: `decision` = `block` (403), `reject`
+(other 4xx), `error` (5xx), otherwise the response's `X-Revoc-Decision`;
+`policy_engine` = `exit:<status>`. The body is never read. 401s are not
+audited.
 
 ---
 
@@ -1490,6 +1504,17 @@ CREATE TABLE IF NOT EXISTS api_keys (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
+
+### Backends
+
+`storage.backend = "sqlite"` uses `crates/revoc-proxy/sql/schema.sql`;
+`"postgres"` uses `sql/schema_postgres.sql` (same columns, no SQLite
+defaults; `created_at` is RFC 3339 UTC text, so time windows compare
+strings). Postgres schema creation runs under `pg_advisory_xact_lock`.
+Without Redis, kill-switch state lives in `kill_switch_state` of the same
+database; on Postgres this is shared, so `REVOC_KILL_SWITCH_KEY` is required.
+Sessions use Redis (`revoc:session:<id>`, TTL `session.ttl_secs`) when
+`REDIS_URL` is set, otherwise process memory.
 
 ---
 

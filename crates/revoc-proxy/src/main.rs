@@ -15,6 +15,7 @@ mod handlers;
 mod kill_switch;
 mod middleware;
 mod shutdown;
+mod storage;
 mod streaming;
 mod upstream;
 
@@ -264,13 +265,6 @@ async fn migrate(config_path: Option<&String>) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Config error: {e}"))?;
     println!("Running migrations for backend: {}", cfg.storage.backend);
 
-    let schema_sql = include_str!("../sql/schema.sql");
-    let statements: Vec<&str> = schema_sql
-        .split(';')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
-
     if cfg.storage.backend.as_str() == "postgres" {
         let url = std::env::var(&cfg.storage.postgres_url_env).map_err(|_| {
             anyhow::anyhow!(
@@ -278,22 +272,24 @@ async fn migrate(config_path: Option<&String>) -> anyhow::Result<()> {
                 cfg.storage.postgres_url_env
             )
         })?;
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&url)
-            .await?;
-        for stmt in &statements {
-            sqlx::query(stmt).execute(&pool).await?;
-        }
-        pool.close().await;
-    } else {
-        let url = format!("sqlite:{}?mode=rwc", cfg.storage.sqlite_path);
-        let pool = sqlx::SqlitePool::connect(&url).await?;
-        for stmt in &statements {
-            sqlx::query(stmt).execute(&pool).await?;
-        }
-        pool.close().await;
+        let store = storage::PostgresAuditStore::connect(&url, 1, true).await?;
+        store.pool().close().await;
+        println!("✓ Postgres schema is up to date.");
+        return Ok(());
     }
+
+    let schema_sql = include_str!("../sql/schema.sql");
+    let statements: Vec<&str> = schema_sql
+        .split(';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let url = format!("sqlite:{}?mode=rwc", cfg.storage.sqlite_path);
+    let pool = sqlx::SqlitePool::connect(&url).await?;
+    for stmt in &statements {
+        sqlx::query(stmt).execute(&pool).await?;
+    }
+    pool.close().await;
 
     println!(
         "✓ Applied {} migration statement(s) to {} backend.",
