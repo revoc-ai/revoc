@@ -8,6 +8,7 @@
 
 pub mod deduplication;
 pub mod pipeline;
+pub mod sse;
 
 pub use deduplication::deduplicate;
 pub use pipeline::{Pipeline, PipelineResult};

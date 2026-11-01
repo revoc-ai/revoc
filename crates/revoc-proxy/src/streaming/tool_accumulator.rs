@@ -1,8 +1,8 @@
 //! Tool call accumulator for streaming responses (SPEC.md §12).
 //!
 //! Collects `function.name` and `function.arguments` across SSE chunks.
-//! When `finish_reason == "tool_calls"` the accumulated calls are submitted
-//! to MCP governance. If blocked, a synthetic `content_filter` chunk is injected.
+//! The stream governor holds every tool-call delta and submits the assembled
+//! calls to governance before the choice's `finish_reason` is forwarded.
 
 use std::collections::HashMap;
 
@@ -61,14 +61,14 @@ impl ToolCallAccumulator {
         }
     }
 
-    /// Returns `true` when the streaming response contains `finish_reason == "tool_calls"`.
-    pub fn is_finish_tool_calls(event_json: &serde_json::Value) -> bool {
-        event_json
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("finish_reason"))
-            .and_then(|r| r.as_str())
-            .is_some_and(|r| r == "tool_calls")
+    /// Parse streamed tool arguments. Arguments that are not valid JSON are
+    /// kept as a raw string so governance still scans them; an empty string
+    /// means no arguments.
+    pub fn parse_arguments(raw: &str) -> serde_json::Value {
+        if raw.trim().is_empty() {
+            return serde_json::Value::Object(serde_json::Map::new());
+        }
+        serde_json::from_str(raw).unwrap_or_else(|_| serde_json::Value::String(raw.to_owned()))
     }
 
     /// Parse all accumulated partial calls into [`McpToolCall`] objects.
@@ -80,8 +80,7 @@ impl ToolCallAccumulator {
         entries
             .into_iter()
             .map(|(idx, partial)| {
-                let arguments = serde_json::from_str(&partial.arguments)
-                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+                let arguments = Self::parse_arguments(&partial.arguments);
                 McpToolCall {
                     tool_name: partial.name.clone(),
                     arguments,
@@ -90,24 +89,5 @@ impl ToolCallAccumulator {
                 }
             })
             .collect()
-    }
-
-    /// Generate a synthetic SSE chunk that signals `finish_reason = "content_filter"`.
-    ///
-    /// Injected in the stream when a tool call is blocked by governance so the
-    /// AI client receives a clean signal that the call was filtered.
-    pub fn synthetic_content_filter_chunk() -> String {
-        serde_json::json!({
-            "id": format!("chatcmpl-revoc-{}", uuid::Uuid::now_v7()),
-            "object": "chat.completion.chunk",
-            "created": chrono::Utc::now().timestamp(),
-            "model": "revoc-governance",
-            "choices": [{
-                "index": 0,
-                "delta": {},
-                "finish_reason": "content_filter"
-            }]
-        })
-        .to_string()
     }
 }

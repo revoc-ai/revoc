@@ -57,20 +57,31 @@ restrict what the tool returns.
 
 ## Streaming Response Governance
 
-For streaming responses (`stream: true`), REVOC uses a sliding window scanner:
+For streaming responses (`stream: true`), REVOC governs the text as it streams,
+with the same policy as non-streamed responses:
 
-1. Each SSE chunk's `delta.content` is appended to a 256-byte rolling window
-2. The window is scanned for patterns on each chunk
-3. The safe prefix (window minus the maximum pattern length) is forwarded
-4. If a pattern spans a chunk boundary, it is detected when the window fills past it
-5. If a block-level finding is detected mid-stream: the stream is terminated,
-   a synthetic `content_filter` chunk is injected, and no further chunks forwarded
+1. Each choice (OpenAI) or content block (Anthropic) is tracked separately.
+2. The last `stream.hold_back_chars` characters (default 128) of each are held
+   back. Text is released only after it has been scanned together with the text
+   before it, so a pattern split across chunks is still caught before any of it
+   reaches your application.
+3. PII is redacted in-stream. The client receives the text with the span
+   replaced.
+4. A blocking finding (a secret, a security pattern) stops the stream. OpenAI
+   clients receive a synthetic `content_filter` chunk followed by `[DONE]`;
+   Anthropic clients receive an `error` event. Nothing held is released.
 
-**Tool call accumulation:** When `finish_reason = tool_calls` is received in a
-streaming response, REVOC has accumulated all tool call arguments across chunks.
-It runs full MCP governance on the accumulated calls before allowing any tool
-invocation. If blocked, a synthetic content filter chunk is injected and the
-MCP server never receives the call.
+**Tool calls** are never streamed through as they arrive. Every tool-call delta
+is held until the call is complete. The assembled calls go through full tool-call
+governance before `finish_reason = tool_calls` (or Anthropic's `stop_reason`) is
+forwarded. If a call is blocked, the stream stops instead, and your application
+never sees the call.
+
+**Shadow mode** records what would have been redacted or blocked without
+changing the stream.
+
+**`stream.buffer_output = true`** holds the whole response until it has been
+governed. A block then becomes an HTTP 403 rather than a stopped stream.
 
 ## Governance Direction Summary
 

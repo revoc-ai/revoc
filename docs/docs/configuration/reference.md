@@ -109,8 +109,7 @@ decode_url_encoded_args = true
 ```toml
 [stream]
 buffer_output = false           # true = buffer full response (HIPAA/PCI mode)
-sliding_window_size = 256
-tool_call_accumulate = true
+hold_back_chars = 128         # chars held per choice until scanned; tool calls always held until governed
 ```
 
 ## [mcp]

@@ -95,8 +95,7 @@ decode_url_encoded_args = true
 
 [stream]
 buffer_output = false
-sliding_window_size = 256
-tool_call_accumulate = true
+hold_back_chars = 128         # chars held per choice until scanned; tool calls always held until governed
 
 [mcp]
 # analyze_tool_manifests is ALWAYS true. Non-negotiable. Even in development.

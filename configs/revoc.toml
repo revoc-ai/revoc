@@ -236,20 +236,19 @@ decode_url_encoded_args = true
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
 [stream]
-# When false (default), use the sliding window scanner for streaming responses.
-# Scans each SSE chunk as it arrives without buffering the full response.
-# When true, buffer the entire response before applying governance and forwarding.
-# Use true for HIPAA/PCI-DSS compliance modes where complete scan is required.
+# When false (default), responses stream through as they arrive. Text is
+# scanned per choice with a short hold-back so patterns split across chunks
+# are caught before release; spans needing redaction are rewritten in-stream.
+# When true, the whole response is buffered and governed before anything is
+# sent, and a block becomes a 403 instead of a terminated stream. Use true for
+# HIPAA/PCI-DSS modes where nothing may leave before a complete scan.
 buffer_output = false
 
-# Size of the sliding window in bytes. The scanner maintains this many bytes
-# of recent output to detect patterns that span SSE chunk boundaries.
-sliding_window_size = 256
-
-# Accumulate tool call arguments across SSE chunks and run MCP governance
-# when finish_reason = "tool_calls". When false, tool call governance is skipped
-# for streaming responses (not recommended for production).
-tool_call_accumulate = true
+# Characters of streamed text held back per choice until more text arrives or
+# the choice ends. Patterns up to this length are always complete before any
+# of their characters is released. Tool-call deltas are always held until the
+# assembled calls pass governance.
+hold_back_chars = 128
 
 # ── MCP ───────────────────────────────────────────────────────────────────────
 [mcp]

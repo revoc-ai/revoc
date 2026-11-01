@@ -1,18 +1,15 @@
-"""Streaming (SSE) governance tests — SPEC.md §12, crates/revoc-proxy/src/upstream/streaming.rs
-and crates/revoc-proxy/src/streaming/window.rs.
+"""Streaming (SSE) governance tests — SPEC.md §12,
+crates/revoc-proxy/src/upstream/streaming.rs and
+crates/revoc-proxy/src/streaming/governor.rs.
 
 The mock-llm wiremock mapping docker/wiremock/mock-llm/mappings/chat-completions-stream.json
 matches `"stream": true` and returns 3 SSE chunks: a greeting, a chunk containing
-a US_SSN (123-45-6789, Severity::High per patterns/pii.rs), and a stop chunk,
-followed by `data: [DONE]`.
+a US_SSN (123-45-6789), and a stop chunk, followed by `data: [DONE]`.
 
-IMPORTANT — documented real behavior: the SlidingWindowScanner
-(crates/revoc-proxy/src/streaming/window.rs) only HALTS the stream for
-High/Critical severity findings (`Finding::is_high_severity`). US_SSN is
-Severity::High, so a streamed SSN does not get redacted in-place — it causes
-the stream to be BLOCKED (a synthetic content_filter chunk is injected and the
-stream ends early), per SPEC.md §23 Rule 22's "halt on governance" model
-applied to sliding-window output scanning.
+The stream governor applies the same policy to streamed text as to any other
+response: PII is redacted in-stream (the SSN is removed, per the redaction
+strategy for US_SSN), secrets and security findings stop the stream with a
+synthetic content_filter chunk, and tool calls are held until governed.
 """
 
 import json
@@ -49,10 +46,10 @@ async def test_streaming_fast_first_chunk(proxy_client):
             assert first_line.startswith("data: ")
 
 
-async def test_streaming_ssn_blocks_stream(proxy_client):
-    """The second chunk contains a US_SSN (High severity) — the sliding
-    window scanner halts the stream and injects a synthetic content_filter
-    chunk instead of forwarding the SSN to the client."""
+async def test_streaming_ssn_is_redacted_in_stream(proxy_client):
+    """The second chunk contains a US_SSN. The default policy redacts PII, so
+    the stream completes normally with the SSN removed — it never reaches the
+    client, and the surrounding text does."""
     async with httpx.AsyncClient(base_url=PROXY_BASE, timeout=30.0) as client:
         async with client.stream(
             "POST",
@@ -63,22 +60,20 @@ async def test_streaming_ssn_blocks_stream(proxy_client):
             events = await _read_sse_events(resp)
 
     assert events, "expected at least one SSE event"
-    full_text = "\n".join(events)
-    assert "123-45-6789" not in full_text
+    assert "123-45-6789" not in "\n".join(events)
+    assert events[-1].strip() == "[DONE]"
 
-    # One of the events must be the synthetic content_filter chunk.
-    found_filter = False
+    text = ""
+    finish = None
     for ev in events:
         if ev.strip() == "[DONE]":
             continue
-        try:
-            parsed = json.loads(ev)
-        except json.JSONDecodeError:
-            continue
-        choices = parsed.get("choices", [])
-        if choices and choices[0].get("finish_reason") == "content_filter":
-            found_filter = True
-    assert found_filter, f"expected a content_filter chunk, got: {events}"
+        choice = (json.loads(ev).get("choices") or [{}])[0]
+        text += (choice.get("delta") or {}).get("content") or ""
+        finish = choice.get("finish_reason") or finish
+    assert text.startswith("Hello there, the SSN is"), text
+    assert text.endswith(" ok"), text
+    assert finish == "stop"
 
 
 async def test_tool_call_finish_reason_governed(proxy_client, wiremock_llm):
@@ -93,9 +88,10 @@ async def test_tool_call_finish_reason_governed(proxy_client, wiremock_llm):
       3. finish_reason=tool_calls
 
     REVOC must intercept the stream before finish_reason=tool_calls reaches the
-    client — either the sliding window scanner fires on chunk 2's raw bytes or
-    governance_on_accumulated_calls() fires on chunk 3. Either way, a synthetic
-    content_filter chunk is injected and finish_reason=tool_calls is suppressed.
+    client. Tool-call deltas are held by the stream governor and released only
+    after the assembled calls pass governance; here they fail, so a synthetic
+    content_filter chunk is sent instead and finish_reason=tool_calls is
+    suppressed.
 
     SPEC.md §23 Rule 22: never forward finish_reason=tool_calls before
     governance on accumulated calls.
@@ -144,8 +140,9 @@ async def test_tool_call_finish_reason_governed(proxy_client, wiremock_llm):
 
 
 async def test_audit_event_written_after_stream(proxy_client, dashboard_client):
-    """After a (non-blocked) stream completes, write_stream_audit() persists
-    an AuditEvent with request_type=LlmResponse. We can't get the trace_id
+    """After a (non-blocked) stream completes, the stream governor persists
+    a response-side AuditEvent with request_type=LlmResponse (the request side
+    is audited separately when the stream starts). We can't get the trace_id
     from streaming responses' headers before the body starts (set_revoc_headers
     is applied to the response builder, so X-Revoc-Trace-ID IS present on the
     initial response headers) — fetch it and poll the dashboard analytics
@@ -182,14 +179,14 @@ async def test_audit_event_written_after_stream(proxy_client, dashboard_client):
 async def test_buffer_output_mode_not_per_request_configurable(proxy_client):
     """`stream.buffer_output` (SPEC.md §13) is a static proxy-wide config
     value read once from AppState/config at startup
-    (crates/revoc-proxy/src/upstream/streaming.rs:
-    `let buffer_output = state.config.stream.buffer_output;`). There is no
+    (crates/revoc-proxy/src/upstream/streaming.rs reads
+    `state.config.stream.buffer_output`). There is no
     request header or body field that overrides it per-request, and the test
     stack's revoc.toml/env does not set REVOC_STREAM__BUFFER_OUTPUT (so it
     uses the documented default `false`). Verifying the `true` (HIPAA/PCI
     full-buffer) branch would require a second proxy instance with different
     config, which is out of scope for this suite. We instead confirm the
-    documented default (false / sliding-window mode) is what's active by
+    documented default (false / incremental streaming) is what's active by
     checking that streaming responses arrive as `text/event-stream` with
     multiple discrete chunks rather than a single buffered JSON/SSE blob."""
     async with httpx.AsyncClient(base_url=PROXY_BASE, timeout=30.0) as client:
